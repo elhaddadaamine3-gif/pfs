@@ -1,0 +1,388 @@
+from django.contrib.auth import get_user_model
+from django.db import models
+from django.utils import timezone
+from uuid import uuid4
+
+
+def generate_id() -> str:
+    return str(uuid4())
+
+
+class UserProfile(models.Model):
+    ROLE_INSTRUCTEUR = "Instructeur"
+    ROLE_STAGEAIRE = "Stageaire"
+    ROLE_ADMIN = "Admin"
+    ROLE_SUPERVISEUR = "Superviseur"
+    ROLE_COORDINATEUR = "Corrdinateur"
+
+    ROLE_CHOICES = [
+        (ROLE_INSTRUCTEUR, "Instructeur"),
+        (ROLE_STAGEAIRE, "Stageaire"),
+        (ROLE_ADMIN, "Admin"),
+        (ROLE_SUPERVISEUR, "Superviseur"),
+        (ROLE_COORDINATEUR, "Corrdinateur"),
+    ]
+
+    user = models.OneToOneField(get_user_model(), on_delete=models.CASCADE, related_name="profile")
+    role = models.CharField(max_length=32, choices=ROLE_CHOICES, default=ROLE_STAGEAIRE)
+    matricule = models.CharField(max_length=50, blank=True, default="")
+    est_civil = models.BooleanField(default=False)
+    corps = models.ForeignKey("Corps", on_delete=models.SET_NULL, null=True, blank=True, related_name="profiles")
+    rank = models.ForeignKey("Rank", on_delete=models.SET_NULL, null=True, blank=True, related_name="profiles")
+    speciality = models.ForeignKey("Speciality", on_delete=models.SET_NULL, null=True, blank=True, related_name="profiles")
+
+    def __str__(self):
+        return f"{self.user.username} ({self.role})"
+
+
+class Specialite(models.Model):
+    id_specialite = models.CharField(max_length=50, primary_key=True, default=generate_id, editable=False)
+    libelle = models.CharField(max_length=255, unique=True)
+
+    def __str__(self):
+        return self.libelle
+
+
+class Corps(models.Model):
+    id_corps = models.CharField(max_length=50, primary_key=True, default=generate_id, editable=False)
+    code = models.CharField(max_length=50, unique=True)
+    label = models.CharField(max_length=255, unique=True)
+
+    def __str__(self):
+        return self.label
+
+
+class Rank(models.Model):
+    id_rank = models.CharField(max_length=50, primary_key=True, default=generate_id, editable=False)
+    code = models.CharField(max_length=50, unique=True)
+    label = models.CharField(max_length=255, unique=True)
+    corps = models.ForeignKey(Corps, on_delete=models.CASCADE, related_name="ranks")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["corps", "label"], name="uq_rank_corps_label"),
+        ]
+
+    def __str__(self):
+        return f"{self.label} ({self.corps.code})"
+
+
+class Speciality(models.Model):
+    id_speciality = models.CharField(max_length=50, primary_key=True, default=generate_id, editable=False)
+    code = models.CharField(max_length=50, unique=True)
+    label = models.CharField(max_length=255, unique=True)
+
+    def __str__(self):
+        return self.label
+
+
+class Brigade(models.Model):
+    id_brigade = models.CharField(max_length=50, primary_key=True, default=generate_id, editable=False)
+    code_brigade = models.CharField(max_length=50, unique=True)
+    libelle = models.CharField(max_length=255)
+    annee_formation = models.CharField(max_length=20, blank=True, default="")
+
+    def __str__(self):
+        return self.code_brigade
+
+
+class Classe(models.Model):
+    id_classe = models.CharField(max_length=50, primary_key=True, default=generate_id, editable=False)
+    code_classe = models.CharField(max_length=50, unique=True)
+    libelle = models.CharField(max_length=255)
+    brigade = models.ForeignKey(Brigade, on_delete=models.CASCADE, related_name="classes")
+
+    def __str__(self):
+        return self.code_classe
+
+
+class StagiaireClasse(models.Model):
+    id_stagiaire_classe = models.CharField(max_length=50, primary_key=True, default=generate_id, editable=False)
+    stagiaire = models.ForeignKey(get_user_model(), on_delete=models.CASCADE, related_name="classes_stagiaire")
+    classe = models.ForeignKey(Classe, on_delete=models.CASCADE, related_name="stagiaires")
+    date_debut = models.DateField()
+    date_fin = models.DateField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(date_fin__isnull=True) | models.Q(date_fin__gte=models.F("date_debut")),
+                name="ck_stagiaire_classe_dates",
+            ),
+        ]
+
+
+class InstructeurProfil(models.Model):
+    instructeur = models.OneToOneField(
+        get_user_model(),
+        on_delete=models.CASCADE,
+        related_name="instructeur_profil",
+    )
+    specialite = models.ForeignKey(Specialite, on_delete=models.PROTECT, related_name="instructeurs")
+    est_civil = models.BooleanField(default=False)
+
+
+class AffectationInstructeurClasse(models.Model):
+    id_affectation = models.CharField(max_length=50, primary_key=True, default=generate_id, editable=False)
+    instructeur = models.ForeignKey(
+        get_user_model(),
+        on_delete=models.CASCADE,
+        related_name="classes_instructeur",
+    )
+    classe = models.ForeignKey(Classe, on_delete=models.CASCADE, related_name="instructeurs")
+    date_debut = models.DateField()
+    date_fin = models.DateField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(date_fin__isnull=True) | models.Q(date_fin__gte=models.F("date_debut")),
+                name="ck_affectation_classe_dates",
+            ),
+            models.UniqueConstraint(
+                fields=["instructeur", "classe", "date_debut"],
+                name="uq_instructeur_classe_debut",
+            ),
+        ]
+
+
+class Cours(models.Model):
+    STATUT_BROUILLON = "BROUILLON"
+    STATUT_PUBLIE = "PUBLIE"
+    STATUT_ARCHIVE = "ARCHIVE"
+    STATUT_CHOICES = [
+        (STATUT_BROUILLON, "Brouillon"),
+        (STATUT_PUBLIE, "Publie"),
+        (STATUT_ARCHIVE, "Archive"),
+    ]
+
+    id_cours = models.CharField(max_length=50, primary_key=True, default=generate_id, editable=False)
+    titre = models.CharField(max_length=255)
+    description = models.TextField(blank=True, default="")
+    date_depot = models.DateField(default=timezone.now)
+    instructeur = models.ForeignKey(get_user_model(), on_delete=models.PROTECT, related_name="cours")
+    specialite = models.ForeignKey(
+        Specialite,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="cours",
+    )
+    statut = models.CharField(max_length=30, choices=STATUT_CHOICES, default=STATUT_BROUILLON)
+
+
+class CoursFichier(models.Model):
+    id_cours_fichier = models.CharField(max_length=50, primary_key=True, default=generate_id, editable=False)
+    cours = models.ForeignKey(Cours, on_delete=models.CASCADE, related_name="fichiers")
+    nom_fichier = models.CharField(max_length=255)
+    mime_type = models.CharField(max_length=100)
+    taille_octets = models.BigIntegerField(default=0)
+    contenu = models.BinaryField()
+    date_ajout = models.DateTimeField(default=timezone.now)
+
+
+class SessionCours(models.Model):
+    id_session = models.CharField(max_length=50, primary_key=True, default=generate_id, editable=False)
+    cours = models.ForeignKey(Cours, on_delete=models.CASCADE, related_name="sessions")
+    date_debut = models.DateTimeField()
+    date_fin = models.DateTimeField()
+    salle = models.CharField(max_length=100, blank=True, default="")
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(condition=models.Q(date_fin__gt=models.F("date_debut")), name="ck_session_dates"),
+        ]
+
+
+class Inscription(models.Model):
+    STATUT_ACTIVE = "ACTIVE"
+    STATUT_SUSPENDUE = "SUSPENDUE"
+    STATUT_TERMINEE = "TERMINEE"
+    STATUT_ANNULEE = "ANNULEE"
+    STATUT_CHOICES = [
+        (STATUT_ACTIVE, "Active"),
+        (STATUT_SUSPENDUE, "Suspendue"),
+        (STATUT_TERMINEE, "Terminee"),
+        (STATUT_ANNULEE, "Annulee"),
+    ]
+
+    id_inscription = models.CharField(max_length=50, primary_key=True, default=generate_id, editable=False)
+    stagiaire = models.ForeignKey(get_user_model(), on_delete=models.CASCADE, related_name="inscriptions")
+    cours = models.ForeignKey(Cours, on_delete=models.CASCADE, related_name="inscriptions")
+    date_inscription = models.DateTimeField(default=timezone.now)
+    statut = models.CharField(max_length=30, choices=STATUT_CHOICES, default=STATUT_ACTIVE)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["stagiaire", "cours"], name="uq_stagiaire_cours"),
+        ]
+
+
+class Controle(models.Model):
+    STATUT_BROUILLON = "BROUILLON"
+    STATUT_PUBLIE = "PUBLIE"
+    STATUT_CLOTURE = "CLOTURE"
+    STATUT_CORRIGE = "CORRIGE"
+    STATUT_CHOICES = [
+        (STATUT_BROUILLON, "Brouillon"),
+        (STATUT_PUBLIE, "Publie"),
+        (STATUT_CLOTURE, "Cloture"),
+        (STATUT_CORRIGE, "Corrige"),
+    ]
+
+    id_controle = models.CharField(max_length=50, primary_key=True, default=generate_id, editable=False)
+    cours = models.ForeignKey(Cours, on_delete=models.CASCADE, related_name="controles")
+    instructeur = models.ForeignKey(get_user_model(), on_delete=models.PROTECT, related_name="controles")
+    nom = models.CharField(max_length=255)
+    date_limite = models.DateTimeField(null=True, blank=True)
+    bareme = models.DecimalField(max_digits=5, decimal_places=2, default=20)
+    statut = models.CharField(max_length=30, choices=STATUT_CHOICES, default=STATUT_BROUILLON)
+    enonce = models.TextField(blank=True, default="")
+    date_publication = models.DateTimeField(null=True, blank=True)
+
+
+class SoumissionControle(models.Model):
+    STATUT_BROUILLON = "BROUILLON"
+    STATUT_SOUMIS = "SOUMIS"
+    STATUT_RETARD = "RETARD"
+    STATUT_ANNULE = "ANNULE"
+    STATUT_CHOICES = [
+        (STATUT_BROUILLON, "Brouillon"),
+        (STATUT_SOUMIS, "Soumis"),
+        (STATUT_RETARD, "Retard"),
+        (STATUT_ANNULE, "Annule"),
+    ]
+
+    id_soumission = models.CharField(max_length=50, primary_key=True, default=generate_id, editable=False)
+    controle = models.ForeignKey(Controle, on_delete=models.CASCADE, related_name="soumissions")
+    stagiaire = models.ForeignKey(get_user_model(), on_delete=models.CASCADE, related_name="soumissions")
+    date_soumission = models.DateTimeField(default=timezone.now)
+    fichier_reponse = models.BinaryField(null=True, blank=True)
+    commentaire = models.TextField(blank=True, default="")
+    statut = models.CharField(max_length=30, choices=STATUT_CHOICES, default=STATUT_SOUMIS)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["controle", "stagiaire"], name="uq_controle_stagiaire_soumission"),
+        ]
+
+
+class ControleCorrection(models.Model):
+    id_correction = models.CharField(max_length=50, primary_key=True, default=generate_id, editable=False)
+    controle = models.ForeignKey(Controle, on_delete=models.CASCADE, related_name="corrections")
+    version_no = models.PositiveIntegerField()
+    titre = models.CharField(max_length=255, blank=True, default="")
+    texte_correction = models.TextField(blank=True, default="")
+    fichier_correction = models.BinaryField(null=True, blank=True)
+    date_publication = models.DateTimeField(default=timezone.now)
+    publie_par = models.ForeignKey(get_user_model(), on_delete=models.PROTECT, related_name="corrections_publiees")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["controle", "version_no"], name="uq_controle_correction_version"),
+        ]
+
+
+class Evaluation(models.Model):
+    id_evaluation = models.CharField(max_length=50, primary_key=True, default=generate_id, editable=False)
+    soumission = models.OneToOneField(
+        SoumissionControle,
+        on_delete=models.CASCADE,
+        related_name="evaluation",
+    )
+    instructeur = models.ForeignKey(get_user_model(), on_delete=models.PROTECT, related_name="evaluations")
+    note = models.DecimalField(max_digits=5, decimal_places=2)
+    correction = models.TextField(blank=True, default="")
+    date_eval = models.DateTimeField(default=timezone.now)
+    est_publiee = models.BooleanField(default=False)
+    date_publication = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(condition=models.Q(note__gte=0) & models.Q(note__lte=20), name="ck_note_0_20"),
+        ]
+
+
+class SujetFinStage(models.Model):
+    STATUT_PROPOSE = "PROPOSE"
+    STATUT_VALIDE = "VALIDE"
+    STATUT_ANNULE = "ANNULE"
+    STATUT_CHOICES = [
+        (STATUT_PROPOSE, "Propose"),
+        (STATUT_VALIDE, "Valide"),
+        (STATUT_ANNULE, "Annule"),
+    ]
+
+    id_sujet = models.CharField(max_length=50, primary_key=True, default=generate_id, editable=False)
+    titre = models.CharField(max_length=255)
+    description = models.TextField(blank=True, default="")
+    specialite = models.ForeignKey(
+        Specialite,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="sujets_fin_stage",
+    )
+    cree_par = models.ForeignKey(get_user_model(), on_delete=models.PROTECT, related_name="sujets_crees")
+    date_creation = models.DateTimeField(default=timezone.now)
+    statut = models.CharField(max_length=30, choices=STATUT_CHOICES, default=STATUT_PROPOSE)
+
+
+class AffectationSujetStage(models.Model):
+    ETAT_EN_COURS = "EN_COURS"
+    ETAT_TERMINE = "TERMINE"
+    ETAT_ABANDONNE = "ABANDONNE"
+    ETAT_CHOICES = [
+        (ETAT_EN_COURS, "En cours"),
+        (ETAT_TERMINE, "Termine"),
+        (ETAT_ABANDONNE, "Abandonne"),
+    ]
+
+    id_affectation_sujet = models.CharField(max_length=50, primary_key=True, default=generate_id, editable=False)
+    sujet = models.ForeignKey(SujetFinStage, on_delete=models.CASCADE, related_name="affectations")
+    stagiaire = models.OneToOneField(get_user_model(), on_delete=models.CASCADE, related_name="sujet_fin_stage")
+    encadrant = models.ForeignKey(
+        get_user_model(),
+        on_delete=models.PROTECT,
+        related_name="encadrements_sujet",
+    )
+    date_affectation = models.DateTimeField(default=timezone.now)
+    etat = models.CharField(max_length=30, choices=ETAT_CHOICES, default=ETAT_EN_COURS)
+
+
+class Notification(models.Model):
+    id_notification = models.CharField(max_length=50, primary_key=True, default=generate_id, editable=False)
+    destinataire = models.ForeignKey(
+        get_user_model(),
+        on_delete=models.CASCADE,
+        related_name="notifications",
+    )
+    type_notification = models.CharField(max_length=50)
+    titre = models.CharField(max_length=255)
+    message = models.TextField()
+    lien_cible = models.CharField(max_length=500, blank=True, default="")
+    est_lue = models.BooleanField(default=False)
+    date_creation = models.DateTimeField(default=timezone.now)
+    date_lecture = models.DateTimeField(null=True, blank=True)
+
+
+class EventAudit(models.Model):
+    id_event = models.CharField(max_length=50, primary_key=True, default=generate_id, editable=False)
+    actor = models.ForeignKey(
+        get_user_model(),
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="events_audit",
+    )
+    actor_username = models.CharField(max_length=150, blank=True, default="")
+    actor_role = models.CharField(max_length=32, blank=True, default="")
+    event_type = models.CharField(max_length=80)
+    target_type = models.CharField(max_length=80, blank=True, default="")
+    target_id = models.CharField(max_length=80, blank=True, default="")
+    message = models.CharField(max_length=255, blank=True, default="")
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(default=timezone.now, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at"]
