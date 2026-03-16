@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python manage.py migrate)",
+      "Bash(python manage.py shell -c \"from api.models import Rank, Corps, Speciality; print\\(''Ranks:'', list\\(Rank.objects.values\\(''code'',''label''\\)[:5]\\)\\); print\\(''Corps:'', list\\(Corps.objects.values\\(''code'',''label''\\)\\)\\); print\\(''Specialities:'', list\\(Speciality.objects.values\\(''code'',''label''\\)[:5]\\)\\)\")",
+      "Bash(python manage.py shell -c \"from api.models import Rank; print\\(list\\(Rank.objects.filter\\(code__in=[''CPL'',''SGT'',''CPT'',''LTN'']\\).values\\(''code'',''label'',''id_rank''\\)\\)\\)\")",
+      "Bash(python manage.py shell -c \":*)",
+      "Bash(python manage.py showmigrations api)"
+    ]
+  }
+}

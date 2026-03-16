@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
+import PdfViewer, { InlinePdfViewer } from "./PdfViewer";
 import { useTranslation } from "react-i18next";
 import Alert from "@mui/material/Alert";
 import Button from "@mui/material/Button";
@@ -28,7 +29,7 @@ type MeResponse = {
 };
 type TokenResponse = { access: string; refresh: string };
 type RefreshResponse = { access: string };
-type Role = "Instructeur" | "Stageaire" | "Admin" | "Superviseur" | "Corrdinateur";
+type Role = "Instructeur" | "Stagiaire" | "Admin" | "Superviseur" | "Coordinateur";
 
 type InstructeurDashboardData = {
   role: Role;
@@ -46,10 +47,13 @@ type InstructeurDashboardData = {
 type StageaireDashboardData = {
   role: Role;
   classes: Array<{ classe_code: string; classe_label: string; brigade_code: string; brigade_label: string }>;
+  cours_list: Array<{ id: string; titre: string; description: string; instructeur: string; controles_count: number }>;
   controls: { available_count: number; submitted_count: number; pending_count: number };
   controls_list: Array<{ id: string; name: string; deadline: string | null; cours: string }>;
   submitted_control_ids: string[];
+  soumissions_detail: Array<{ soumission_id: string; controle_id: string; controle_name: string; statut: string; submitted_at: string; has_fichier: boolean; note: string | null; correction_publiee: string | null; correction_titre: string | null }>;
   notes: Array<{ controle: string; note: string; published_at: string | null }>;
+  sujet_fin_stage: { titre: string; description: string; etat: string; encadrant: string; date_affectation: string } | null;
   notifications: { unread_count: number; latest: Array<{ id: string; title: string; type: string; created_at: string }> };
 };
 
@@ -137,7 +141,7 @@ type AdminClassData = {
 
 type ReferenceCorp = { id: string; code: string; label: string };
 type ReferenceRank = { id: string; code: string; label: string; corps_id: string };
-type ReferenceSpeciality = { id: string; code: string; label: string };
+type ReferenceSpeciality = { id: string; code: string; label: string; corps_id?: string | null };
 type AdminEventData = {
   id: string;
   created_at: string;
@@ -153,7 +157,7 @@ type AdminEventData = {
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
 const ACCESS_TOKEN_KEY = "access_token";
 const REFRESH_TOKEN_KEY = "refresh_token";
-const ROLE_OPTIONS: Role[] = ["Instructeur", "Stageaire", "Superviseur", "Corrdinateur"];
+const ROLE_OPTIONS: Role[] = ["Instructeur", "Stagiaire", "Superviseur", "Coordinateur"];
 
 function Layout({
   user,
@@ -293,6 +297,176 @@ function EmptyState({ message }: { message: string }) {
   return <Alert severity="info" sx={{ mt: 1 }}>{message}</Alert>;
 }
 
+type ReferenceManagementSectionProps = {
+  referencesData: {
+    corps: ReferenceCorp[];
+    ranks: ReferenceRank[];
+    specialities: ReferenceSpeciality[];
+  };
+  referenceTab: "corps" | "ranks" | "specialities";
+  setReferenceTab: (value: "corps" | "ranks" | "specialities") => void;
+  newCorps: { code: string; label: string };
+  setNewCorps: React.Dispatch<React.SetStateAction<{ code: string; label: string }>>;
+  newRank: { code: string; label: string; corps_id: string };
+  setNewRank: React.Dispatch<React.SetStateAction<{ code: string; label: string; corps_id: string }>>;
+  newSpeciality: { code: string; label: string; corps_id: string };
+  setNewSpeciality: React.Dispatch<React.SetStateAction<{ code: string; label: string; corps_id: string }>>;
+  handleCreateCorps: (event: FormEvent<HTMLFormElement>) => Promise<void>;
+  handleCreateRank: (event: FormEvent<HTMLFormElement>) => Promise<void>;
+  handleCreateSpeciality: (event: FormEvent<HTMLFormElement>) => Promise<void>;
+  handleRenameCorps: (corpsId: string, current: string) => void;
+  handleRenameRank: (rankId: string, current: string) => void;
+  handleRenameSpeciality: (specialityId: string, current: string) => void;
+};
+
+function ReferenceManagementSection({
+  referencesData,
+  referenceTab,
+  setReferenceTab,
+  newCorps,
+  setNewCorps,
+  newRank,
+  setNewRank,
+  newSpeciality,
+  setNewSpeciality,
+  handleCreateCorps,
+  handleCreateRank,
+  handleCreateSpeciality,
+  handleRenameCorps,
+  handleRenameRank,
+  handleRenameSpeciality,
+}: ReferenceManagementSectionProps) {
+  return (
+    <div className="grid gap-6">
+      <PanelSection title="Corps, ranks et specialities">
+        <p className="text-sm text-app-dark/70">
+          Ces tables sont bootstrappées à partir des données des corps et peuvent être ajustées par les superviseurs au besoin.
+        </p>
+      </PanelSection>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <TabButton active={referenceTab === "corps"} onClick={() => setReferenceTab("corps")}>
+          Corps
+        </TabButton>
+        <TabButton active={referenceTab === "ranks"} onClick={() => setReferenceTab("ranks")}>
+          Ranks
+        </TabButton>
+        <TabButton active={referenceTab === "specialities"} onClick={() => setReferenceTab("specialities")}>
+          Specialities
+        </TabButton>
+      </div>
+
+      {referenceTab === "corps" ? (
+        <SubCard title="Corps">
+          <form className="grid gap-2" onSubmit={handleCreateCorps}>
+            <Input label="Code" value={newCorps.code} onChange={(value) => setNewCorps((prev) => ({ ...prev, code: value }))} />
+            <Input label="Libelle" value={newCorps.label} onChange={(value) => setNewCorps((prev) => ({ ...prev, label: value }))} />
+            <button className="rounded bg-app-dark px-3 py-2 text-xs font-semibold text-white" type="submit">
+              Ajouter corp
+            </button>
+          </form>
+          <div className="mt-3 space-y-2">
+            {referencesData.corps.map((corp) => (
+              <button
+                className="w-full rounded border border-app-muted px-2 py-1 text-left text-xs hover:bg-app-soft"
+                key={corp.id}
+                onClick={() => void handleRenameCorps(corp.id, corp.label)}
+                type="button"
+              >
+                {corp.label} ({corp.code})
+              </button>
+            ))}
+            {referencesData.corps.length === 0 ? <EmptyState message="Aucun corp." /> : null}
+          </div>
+        </SubCard>
+      ) : null}
+
+      {referenceTab === "ranks" ? (
+        <SubCard title="Ranks">
+          <form className="grid gap-2" onSubmit={handleCreateRank}>
+            <Input label="Code" value={newRank.code} onChange={(value) => setNewRank((prev) => ({ ...prev, code: value }))} />
+            <Input label="Libelle" value={newRank.label} onChange={(value) => setNewRank((prev) => ({ ...prev, label: value }))} />
+            <label className="grid gap-1 text-sm font-medium text-app-dark">
+              Corp
+              <select
+                className="rounded border border-app-muted bg-white px-3 py-2"
+                onChange={(event) => setNewRank((prev) => ({ ...prev, corps_id: event.target.value }))}
+                value={newRank.corps_id}
+              >
+                <option value="">Selectionner</option>
+                {referencesData.corps.map((corp) => (
+                  <option key={corp.id} value={corp.id}>
+                    {corp.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button className="rounded bg-app-dark px-3 py-2 text-xs font-semibold text-white" type="submit">
+              Ajouter rank
+            </button>
+          </form>
+          <div className="mt-3 space-y-2">
+            {referencesData.ranks.map((rank) => (
+              <button
+                className="w-full rounded border border-app-muted px-2 py-1 text-left text-xs hover:bg-app-soft"
+                key={rank.id}
+                onClick={() => void handleRenameRank(rank.id, rank.label)}
+                type="button"
+              >
+                {rank.label} ({rank.code})
+              </button>
+            ))}
+            {referencesData.ranks.length === 0 ? <EmptyState message="Aucun rank." /> : null}
+          </div>
+        </SubCard>
+      ) : null}
+
+      {referenceTab === "specialities" ? (
+        <SubCard title="Specialities">
+          <form className="grid gap-2" onSubmit={handleCreateSpeciality}>
+            <Input label="Code" value={newSpeciality.code} onChange={(value) => setNewSpeciality((prev) => ({ ...prev, code: value }))} />
+            <Input label="Libelle" value={newSpeciality.label} onChange={(value) => setNewSpeciality((prev) => ({ ...prev, label: value }))} />
+            <label className="grid gap-1 text-sm font-medium text-app-dark">
+              Corp (optionnel)
+              <select
+                className="rounded border border-app-muted bg-white px-3 py-2"
+                onChange={(event) => setNewSpeciality((prev) => ({ ...prev, corps_id: event.target.value }))}
+                value={newSpeciality.corps_id}
+              >
+                <option value="">Selectionner</option>
+                {referencesData.corps.map((corp) => (
+                  <option key={corp.id} value={corp.id}>
+                    {corp.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button className="rounded bg-app-dark px-3 py-2 text-xs font-semibold text-white" type="submit">
+              Ajouter speciality
+            </button>
+          </form>
+          <div className="mt-3 space-y-2">
+            {referencesData.specialities.map((speciality) => (
+              <button
+                className="w-full rounded border border-app-muted px-2 py-1 text-left text-xs hover:bg-app-soft"
+                key={speciality.id}
+                onClick={() => void handleRenameSpeciality(speciality.id, speciality.label)}
+                type="button"
+              >
+                {speciality.label} ({speciality.code})
+                {speciality.corps_id
+                  ? ` - ${referencesData.corps.find((c) => c.id === speciality.corps_id)?.label ?? ""}`
+                  : ""}
+              </button>
+            ))}
+            {referencesData.specialities.length === 0 ? <EmptyState message="Aucune speciality." /> : null}
+          </div>
+        </SubCard>
+      ) : null}
+    </div>
+  );
+}
+
 function HomePage() {
   const { t } = useTranslation();
   return (
@@ -394,7 +568,7 @@ function SignupPage({
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState<Role>("Stageaire");
+  const [role, setRole] = useState<Role>("Stagiaire");
   const [matricule, setMatricule] = useState("");
   const [estCivil, setEstCivil] = useState(false);
   const [corpsId, setCorpsId] = useState("");
@@ -404,6 +578,9 @@ function SignupPage({
   const requiresMilitaryProfile = !(role === "Instructeur" && estCivil);
   const matriculeRequired = requiresMilitaryProfile;
   const ranksForCorps = references.ranks.filter((rank) => rank.corps_id === corpsId);
+  const specialitiesForCorps = references.specialities.filter(
+    (speciality) => !speciality.corps_id || speciality.corps_id === corpsId
+  );
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -482,6 +659,7 @@ function SignupPage({
                   onChange={(event) => {
                     setCorpsId(event.target.value);
                     setRankId("");
+                    setSpecialityId("");
                   }}
                   required
                   value={corpsId}
@@ -519,7 +697,7 @@ function SignupPage({
                   value={specialityId}
                 >
                   <option value="">Selectionner</option>
-                  {references.specialities.map((speciality) => (
+                  {specialitiesForCorps.map((speciality) => (
                     <option key={speciality.id} value={speciality.id}>
                       {speciality.label}
                     </option>
@@ -546,30 +724,44 @@ function DashboardPage({
   user,
   onLoadProfile,
   apiFetch,
+  onSessionInvalid,
 }: {
   user: MeResponse | null;
   onLoadProfile: () => Promise<void>;
   apiFetch: (path: string, init?: RequestInit) => Promise<Response>;
+  onSessionInvalid: () => void;
 }) {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [dashboardError, setDashboardError] = useState<string | null>(null);
   const [instructeurData, setInstructeurData] = useState<InstructeurDashboardData | null>(null);
   const [stageaireData, setStageaireData] = useState<StageaireDashboardData | null>(null);
+  const [selectedCours, setSelectedCours] = useState<{
+    id: string; titre: string; description: string; instructeur: string; date_depot: string;
+    fichiers: Array<{ id_cours_fichier: string; nom_fichier: string; mime_type: string; taille_octets: number }>;
+    controles: Array<{ id: string; nom: string; enonce: string; bareme: number; date_limite: string | null; has_fichier: boolean; nom_fichier_enonce: string }>;
+  } | null>(null);
+  const [coursFileCache, setCoursFileCache] = useState<Record<string, { base64: string; name: string; mimeType: string }>>({});
   const [superviseurData, setSuperviseurData] = useState<SuperviseurDashboardData | null>(null);
   const [coordinateurData, setCoordinateurData] = useState<CoordinateurDashboardData | null>(null);
   const [adminData, setAdminData] = useState<AdminDashboardData | null>(null);
 
   const [courseTitle, setCourseTitle] = useState("");
   const [courseDescription, setCourseDescription] = useState("");
+  const [courseFichierFile, setCourseFichierFile] = useState<File | null>(null);
   const [controlCoursId, setControlCoursId] = useState("");
   const [controlName, setControlName] = useState("");
   const [controlPrompt, setControlPrompt] = useState("");
+  const [controlEnonceFichier, setControlEnonceFichier] = useState<File | null>(null);
   const [submissionAnswers, setSubmissionAnswers] = useState<Record<string, string>>({});
+  const [submissionFiles, setSubmissionFiles] = useState<Record<string, File>>({});
   const [evalNote, setEvalNote] = useState<Record<string, string>>({});
   const [evalCorrection, setEvalCorrection] = useState<Record<string, string>>({});
   const [correctionText, setCorrectionText] = useState<Record<string, string>>({});
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [pdfViewer, setPdfViewer] = useState<{ base64: string; name: string; mimeType: string } | null>(null);
+  const [instructeurView, setInstructeurView] = useState<"dashboard" | "cours" | "controles" | "corriger" | "reponse_controle" | "sujet">("dashboard");
+  const [stageaireView, setStageaireView] = useState<"dashboard" | "cours" | "controles" | "reponse_controle" | "sujet">("dashboard");
   const [adminView, setAdminView] = useState<"overview" | "users" | "accounts" | "subjects" | "classes" | "references" | "events">("overview");
   const [selectedAdminUser, setSelectedAdminUser] = useState<AdminDashboardData["users"][number] | null>(null);
   const [subjects, setSubjects] = useState<SubjectData[]>([]);
@@ -582,7 +774,7 @@ function DashboardPage({
     username: "",
     email: "",
     password: "",
-    role: "Stageaire",
+    role: "Stagiaire",
     matricule: "",
     est_civil: false,
     corps_id: "",
@@ -590,6 +782,7 @@ function DashboardPage({
     speciality_id: "",
   });
   const [csvFileName, setCsvFileName] = useState("");
+  const [csvErrors, setCsvErrors] = useState<Array<{ line: number; error: string }>>([]);
   const [classesData, setClassesData] = useState<AdminClassData[]>([]);
   const [newClassForm, setNewClassForm] = useState({ code_classe: "", libelle: "", brigade_code: "", brigade_label: "" });
   const [selectedClassId, setSelectedClassId] = useState("");
@@ -603,7 +796,7 @@ function DashboardPage({
   const [referenceTab, setReferenceTab] = useState<"corps" | "ranks" | "specialities">("corps");
   const [newCorps, setNewCorps] = useState({ code: "", label: "" });
   const [newRank, setNewRank] = useState({ code: "", label: "", corps_id: "" });
-  const [newSpeciality, setNewSpeciality] = useState({ code: "", label: "" });
+  const [newSpeciality, setNewSpeciality] = useState({ code: "", label: "", corps_id: "" });
   const [adminEvents, setAdminEvents] = useState<AdminEventData[]>([]);
   const [toastState, setToastState] = useState<{ kind: "success" | "error"; message: string; closing: boolean } | null>(null);
   const [renameModal, setRenameModal] = useState<{
@@ -617,9 +810,8 @@ function DashboardPage({
     void onLoadProfile();
   }, [onLoadProfile]);
 
-  if (!user) return <Navigate to="/login" replace />;
-
   useEffect(() => {
+    if (!user) return;
     if (user.role === "Admin") {
       let suffix = t("titles.adminOverview");
       if (adminView === "users") suffix = selectedAdminUser ? t("titles.adminUserDetails") : t("titles.adminUsers");
@@ -641,12 +833,13 @@ function DashboardPage({
       return;
     }
     if (user.role === "Instructeur") document.title = `${t("titles.instructorDashboard")} - ${t("titles.appName")}`;
-    if (user.role === "Stageaire") document.title = `${t("titles.traineeDashboard")} - ${t("titles.appName")}`;
+    if (user.role === "Stagiaire") document.title = `${t("titles.traineeDashboard")} - ${t("titles.appName")}`;
     if (user.role === "Superviseur") document.title = `${t("titles.supervisorDashboard")} - ${t("titles.appName")}`;
-    if (user.role === "Corrdinateur") document.title = `${t("titles.coordinatorDashboard")} - ${t("titles.appName")}`;
-  }, [user.role, adminView, selectedAdminUser, subjectTab, referenceTab, t]);
+    if (user.role === "Coordinateur") document.title = `${t("titles.coordinatorDashboard")} - ${t("titles.appName")}`;
+  }, [user, adminView, selectedAdminUser, subjectTab, referenceTab, t]);
 
   const loadDashboard = async () => {
+    if (!user) return;
     setLoading(true);
     setDashboardError(null);
     if (user.role !== "Admin") {
@@ -656,26 +849,31 @@ function DashboardPage({
     try {
       if (user.role === "Instructeur") {
         const response = await apiFetch("/api/dashboard/instructeur/");
+        if (response.status === 403) { onSessionInvalid(); return; }
         if (!response.ok) throw new Error("failed");
         const data: InstructeurDashboardData = await response.json();
         setInstructeurData(data);
-      } else if (user.role === "Stageaire") {
+      } else if (user.role === "Stagiaire") {
         const response = await apiFetch("/api/dashboard/stageaire/");
+        if (response.status === 403) { onSessionInvalid(); return; }
         if (!response.ok) throw new Error("failed");
         const data: StageaireDashboardData = await response.json();
         setStageaireData(data);
       } else if (user.role === "Superviseur") {
         const response = await apiFetch("/api/dashboard/superviseur/");
+        if (response.status === 403) { onSessionInvalid(); return; }
         if (!response.ok) throw new Error("failed");
         const data: SuperviseurDashboardData = await response.json();
         setSuperviseurData(data);
-      } else if (user.role === "Corrdinateur") {
+      } else if (user.role === "Coordinateur") {
         const response = await apiFetch("/api/dashboard/coordinateur/");
+        if (response.status === 403) { onSessionInvalid(); return; }
         if (!response.ok) throw new Error("failed");
         const data: CoordinateurDashboardData = await response.json();
         setCoordinateurData(data);
       } else if (user.role === "Admin") {
         const response = await apiFetch("/api/dashboard/admin/");
+        if (response.status === 403) { onSessionInvalid(); return; }
         if (!response.ok) throw new Error("failed");
         const data: AdminDashboardData = await response.json();
         setAdminData(data);
@@ -688,8 +886,9 @@ function DashboardPage({
   };
 
   useEffect(() => {
+    if (!user) return;
     void loadDashboard();
-  }, [user.role]);
+  }, [user?.role]);
 
   const handleCreateCourse = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -698,12 +897,22 @@ function DashboardPage({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ titre: courseTitle, description: courseDescription, publier: true }),
     });
-    if (response.ok) {
-      setCourseTitle("");
-      setCourseDescription("");
-      setActionMessage("Cours cree.");
-      await loadDashboard();
+    if (!response.ok) return;
+    const created: { id: string } = await response.json();
+    if (courseFichierFile) {
+      const fichier_base64 = await readFileAsBase64(courseFichierFile);
+      await apiFetch(`/api/instructeur/cours/${created.id}/fichier/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fichier_base64, nom_fichier: courseFichierFile.name, mime_type: courseFichierFile.type || "application/rtf" }),
+      });
     }
+    const withFile = courseFichierFile ? ` + fichier « ${courseFichierFile.name} »` : "";
+    setCourseTitle("");
+    setCourseDescription("");
+    setCourseFichierFile(null);
+    setActionMessage(`Cours « ${courseTitle} » publié${withFile}.`);
+    await loadDashboard();
   };
 
   const handleCreateControl = async (event: FormEvent<HTMLFormElement>) => {
@@ -718,12 +927,23 @@ function DashboardPage({
         publier: true,
       }),
     });
-    if (response.ok) {
-      setControlName("");
-      setControlPrompt("");
-      setActionMessage("Controle publie.");
-      await loadDashboard();
+    if (!response.ok) return;
+    const created: { id: string } = await response.json();
+    if (controlEnonceFichier) {
+      const fichier_base64 = await readFileAsBase64(controlEnonceFichier);
+      await apiFetch(`/api/instructeur/controles/${created.id}/fichier/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fichier_base64, nom_fichier: controlEnonceFichier.name, mime_type: controlEnonceFichier.type || "application/rtf" }),
+      });
     }
+    const coursName = instructeurData?.cours_list.find((c) => c.id === controlCoursId)?.title ?? controlCoursId;
+    const withEnonce = controlEnonceFichier ? ` + énoncé « ${controlEnonceFichier.name} »` : "";
+    setControlName("");
+    setControlPrompt("");
+    setControlEnonceFichier(null);
+    setActionMessage(`Contrôle « ${controlName} » publié pour le cours « ${coursName} »${withEnonce}.`);
+    await loadDashboard();
   };
 
   const handleEvaluate = async (soumissionId: string) => {
@@ -735,7 +955,9 @@ function DashboardPage({
       body: JSON.stringify({ note, correction, publier_note: true }),
     });
     if (response.ok) {
-      setActionMessage("Note publiee.");
+      const sub = instructeurData?.pending_submissions.find((s) => s.soumission_id === soumissionId);
+      const label = sub ? `« ${sub.controle_name} » (stagiaire #${sub.stagiaire_id})` : soumissionId.slice(0, 8);
+      setActionMessage(`Note ${note}/20 publiée pour ${label}.`);
       await loadDashboard();
     }
   };
@@ -748,20 +970,50 @@ function DashboardPage({
       body: JSON.stringify({ titre: "Correction", texte_correction: texte }),
     });
     if (response.ok) {
-      setActionMessage("Correction publiee.");
+      const ctrl = instructeurData?.controles_list.find((c) => c.id === controleId);
+      const label = ctrl ? `« ${ctrl.name} »` : controleId.slice(0, 8);
+      setActionMessage(`Correction publiée pour le contrôle ${label}.`);
       await loadDashboard();
+    }
+  };
+
+  const handleOpenCours = async (coursId: string) => {
+    const response = await apiFetch(`/api/stageaire/cours/${coursId}/`);
+    if (!response.ok) return;
+    const data = await response.json();
+    setCoursFileCache({});
+    setSelectedCours(data);
+    // Fetch all course files so they render inline
+    for (const f of data.fichiers ?? []) {
+      apiFetch(`/api/stageaire/cours/${coursId}/fichier/${f.id_cours_fichier}/`).then(async (r) => {
+        if (!r.ok) return;
+        const fd: { fichier_base64: string; nom_fichier: string; mime_type: string } = await r.json();
+        setCoursFileCache((prev) => ({ ...prev, [f.id_cours_fichier]: { base64: fd.fichier_base64, name: fd.nom_fichier, mimeType: fd.mime_type } }));
+      });
     }
   };
 
   const handleSubmitAnswer = async (controlId: string) => {
     const commentaire = submissionAnswers[controlId] ?? "";
+    const file = submissionFiles[controlId];
+    let fichier_base64 = "";
+    let nom_fichier = "";
+    let mime_type = "";
+    if (file) {
+      fichier_base64 = await readFileAsBase64(file);
+      nom_fichier = file.name;
+      mime_type = file.type || "application/rtf";
+    }
     const response = await apiFetch(`/api/stageaire/controls/${controlId}/submit/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ commentaire }),
+      body: JSON.stringify({ commentaire, fichier_base64, nom_fichier, mime_type }),
     });
     if (response.ok) {
-      setActionMessage("Reponse envoyee.");
+      setSubmissionFiles((prev) => { const next = { ...prev }; delete next[controlId]; return next; });
+      const ctrl = stageaireData?.controls_list.find((c) => c.id === controlId);
+      const withFile = file ? ` avec fichier « ${file.name} »` : "";
+      setActionMessage(`Réponse soumise pour « ${ctrl?.name ?? controlId.slice(0, 8)} »${withFile}.`);
       await loadDashboard();
     }
   };
@@ -771,7 +1023,10 @@ function DashboardPage({
       method: "POST",
     });
     if (response.ok) {
-      setActionMessage("Statut utilisateur mis a jour.");
+      const target = adminData?.users.find((u) => u.id === targetUserId);
+      const label = target ? `« ${target.username} » (${target.role})` : `#${targetUserId}`;
+      const newStatus = target?.is_active ? "désactivé" : "activé";
+      setActionMessage(`Compte ${label} ${newStatus}.`);
       await loadDashboard();
     }
   };
@@ -837,8 +1092,8 @@ function DashboardPage({
       body: JSON.stringify({ label: newSubjectLabel }),
     });
     if (response.ok) {
+      setActionMessage(`Sujet « ${newSubjectLabel} » créé.`);
       setNewSubjectLabel("");
-      setActionMessage("Sujet cree.");
       await loadSubjects();
     }
   };
@@ -851,7 +1106,7 @@ function DashboardPage({
       body: JSON.stringify(newClassForm),
     });
     if (response.ok) {
-      setActionMessage("Classe creee.");
+      setActionMessage(`Classe « ${newClassForm.code_classe} — ${newClassForm.libelle} » créée (brigade ${newClassForm.brigade_code}).`);
       setNewClassForm({ code_classe: "", libelle: "", brigade_code: "", brigade_label: "" });
       await loadClasses();
     }
@@ -865,7 +1120,9 @@ function DashboardPage({
       body: JSON.stringify({ stageaire_id: Number(selectedStageaireId) }),
     });
     if (response.ok) {
-      setActionMessage("Stageaire assigne a la classe.");
+      const cls = classesData.find((c) => c.id === selectedClassId);
+      const stag = adminData?.users.find((u) => u.id === Number(selectedStageaireId));
+      setActionMessage(`Stagiaire « ${stag?.username ?? selectedStageaireId} » affecté à la classe « ${cls?.code ?? selectedClassId} ».`);
       setSelectedStageaireId("");
       await loadClasses();
     }
@@ -879,7 +1136,9 @@ function DashboardPage({
       body: JSON.stringify({ instructeur_id: Number(selectedInstructeurId) }),
     });
     if (response.ok) {
-      setActionMessage("Instructeur assigne a la classe.");
+      const cls = classesData.find((c) => c.id === selectedClassId);
+      const instr = adminData?.users.find((u) => u.id === Number(selectedInstructeurId));
+      setActionMessage(`Instructeur « ${instr?.username ?? selectedInstructeurId} » affecté à la classe « ${cls?.code ?? selectedClassId} ».`);
       setSelectedInstructeurId("");
       await loadClasses();
     }
@@ -892,7 +1151,8 @@ function DashboardPage({
       body: JSON.stringify({ status: statusValue }),
     });
     if (response.ok) {
-      setActionMessage("Statut du controle mis a jour.");
+      const ctrl = subjectControls.find((c) => c.id === controlId);
+      setActionMessage(`Contrôle « ${ctrl?.name ?? controlId.slice(0, 8)} » passé en ${statusValue}.`);
       await loadSubjectControls(selectedSubjectId);
     }
   };
@@ -904,7 +1164,8 @@ function DashboardPage({
       body: JSON.stringify({ status: statusValue }),
     });
     if (response.ok) {
-      setActionMessage("Statut du cours mis a jour.");
+      const cours = subjectCourses.find((c) => c.id === courseId);
+      setActionMessage(`Cours « ${cours?.title ?? courseId.slice(0, 8)} » passé en ${statusValue}.`);
       await loadSubjectCourses(selectedSubjectId);
     }
   };
@@ -917,12 +1178,12 @@ function DashboardPage({
       body: JSON.stringify(accountForm),
     });
     if (response.ok) {
-      setActionMessage("Compte cree.");
+      setActionMessage(`Compte « ${accountForm.username} » créé avec le rôle ${accountForm.role}.`);
       setAccountForm({
         username: "",
         email: "",
         password: "",
-        role: "Stageaire",
+        role: "Stagiaire",
         matricule: "",
         est_civil: false,
         corps_id: "",
@@ -941,8 +1202,8 @@ function DashboardPage({
       body: JSON.stringify(newCorps),
     });
     if (response.ok) {
+      setActionMessage(`Corps « ${newCorps.label} » (${newCorps.code}) créé.`);
       setNewCorps({ code: "", label: "" });
-      setActionMessage("Corp cree.");
       await loadAdminReferences();
     }
   };
@@ -955,8 +1216,9 @@ function DashboardPage({
       body: JSON.stringify(newRank),
     });
     if (response.ok) {
+      const corpsLabel = referencesData.corps.find((c) => c.id === newRank.corps_id)?.label ?? newRank.corps_id;
+      setActionMessage(`Grade « ${newRank.label} » (${newRank.code}) ajouté au corps ${corpsLabel}.`);
       setNewRank((prev) => ({ ...prev, code: "", label: "" }));
-      setActionMessage("Rank cree.");
       await loadAdminReferences();
     }
   };
@@ -969,8 +1231,10 @@ function DashboardPage({
       body: JSON.stringify(newSpeciality),
     });
     if (response.ok) {
-      setNewSpeciality({ code: "", label: "" });
-      setActionMessage("Speciality creee.");
+      const corpsLabel = referencesData.corps.find((c) => c.id === newSpeciality.corps_id)?.label ?? "";
+      const corpsInfo = corpsLabel ? ` (${corpsLabel})` : "";
+      setActionMessage(`Spécialité « ${newSpeciality.label} » (${newSpeciality.code})${corpsInfo} créée.`);
+      setNewSpeciality({ code: "", label: "", corps_id: "" });
       await loadAdminReferences();
     }
   };
@@ -1002,7 +1266,8 @@ function DashboardPage({
       body: JSON.stringify({ label: renameModal.value.trim() }),
     });
     if (response.ok) {
-      setActionMessage("Reference mise a jour.");
+      const typeLabel = renameModal.target === "corps" ? "Corps" : renameModal.target === "rank" ? "Grade" : "Spécialité";
+      setActionMessage(`${typeLabel} renommé en « ${renameModal.value.trim()} ».`);
       setRenameModal({ open: false, target: null, id: "", value: "" });
       await loadAdminReferences();
     }
@@ -1021,38 +1286,84 @@ function DashboardPage({
     });
     const result = await response.json();
     if (response.ok) {
-      setActionMessage(`Import termine: ${result.created_count} comptes crees.`);
+      const errNote = result.error_count ? ` (${result.error_count} lignes ignorees)` : "";
+      setActionMessage(`Import termine: ${result.created_count} comptes crees${errNote}.`);
+      setCsvErrors((result.errors as Array<{ line: number; error: string }>) ?? []);
       await loadDashboard();
+    } else if (result.errors?.length) {
+      setCsvErrors(result.errors as Array<{ line: number; error: string }>);
+      setActionMessage(`Import echoue — ${result.error_count ?? result.errors.length} erreur(s). Voir details ci-dessous.`);
     } else {
-      setActionMessage(`Import partiel/erreur: ${result.error_count ?? 0} erreurs.`);
+      setCsvErrors([]);
+      setActionMessage(result.detail ?? "Import echoue.");
     }
   };
 
-  useEffect(() => {
-    if (user.role === "Admin") {
-      void loadSubjects();
-      void loadClasses();
-      void loadAdminReferences();
+  const triggerDownload = (base64: string, name: string, mimeType: string) => {
+    const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+    const blob = new Blob([bytes], { type: mimeType || "application/octet-stream" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = name;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  };
+
+  const openFichierFromApi = async (url: string, fallbackName: string) => {
+    const response = await apiFetch(url);
+    if (!response.ok) { setActionMessage(`Fichier introuvable (${url.split("/").filter(Boolean).pop()}).`); return; }
+    const data: { fichier_base64: string; nom_fichier: string; mime_type: string } = await response.json();
+    const name = data.nom_fichier || fallbackName;
+    const mime = data.mime_type || "";
+    if (mime === "application/pdf" || name.toLowerCase().endsWith(".pdf")) {
+      setPdfViewer({ base64: data.fichier_base64, name, mimeType: mime });
+    } else {
+      triggerDownload(data.fichier_base64, name, mime);
     }
-  }, [user.role]);
+  };
+
+  const readFileAsBase64 = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        resolve(result.split(",")[1]);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
 
   useEffect(() => {
+      if (!user) return;
+      if (user.role === "Admin") {
+        void loadSubjects();
+        void loadClasses();
+      }
+      if (user.role === "Admin" || user.role === "Superviseur") {
+        void loadAdminReferences();
+      }
+    }, [user?.role]);
+
+  useEffect(() => {
+    if (!user) return;
     if (user.role === "Admin" && adminView === "events") {
       void loadAdminEvents();
     }
-  }, [user.role, adminView]);
+  }, [user?.role, adminView]);
 
   useEffect(() => {
+    if (!user) return;
     if (user.role === "Admin" && adminView === "subjects" && subjectTab === "controls") {
       void loadSubjectControls(selectedSubjectId);
     }
-  }, [user.role, adminView, subjectTab, selectedSubjectId]);
+  }, [user?.role, adminView, subjectTab, selectedSubjectId]);
 
   useEffect(() => {
+    if (!user) return;
     if (user.role === "Admin" && adminView === "subjects" && subjectTab === "courses") {
       void loadSubjectCourses(selectedSubjectId);
     }
-  }, [user.role, adminView, subjectTab, selectedSubjectId]);
+  }, [user?.role, adminView, subjectTab, selectedSubjectId]);
 
   useEffect(() => {
     if (actionMessage) {
@@ -1084,8 +1395,11 @@ function DashboardPage({
     }
   }, [dashboardError]);
 
+  if (!user) return <Navigate to="/login" replace />;
+
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-10">
+
       {user.role !== "Admin" ? (
         <section className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-[0.12em] text-app-accent">{t("dashboard.badge")}</p>
@@ -1109,6 +1423,15 @@ function DashboardPage({
         </section>
       ) : null}
 
+      {pdfViewer ? (
+        <PdfViewer
+          base64={pdfViewer.base64}
+          name={pdfViewer.name}
+          onClose={() => setPdfViewer(null)}
+          onDownload={() => { triggerDownload(pdfViewer.base64, pdfViewer.name, pdfViewer.mimeType); }}
+        />
+      ) : null}
+
       {toastState ? (
         <div className={`fixed right-4 top-20 z-40 max-w-md rounded-lg px-4 py-3 text-sm shadow-lg ${toastState.kind === "success" ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-700"} ${toastState.closing ? "toast-exit" : `toast-enter ${toastState.kind === "error" ? "shake-error" : ""}`}`}>
           <span className={toastState.kind === "success" ? "checkmark-pop font-semibold" : "font-semibold"}>
@@ -1120,203 +1443,640 @@ function DashboardPage({
 
       {user.role === "Instructeur" && instructeurData ? (
         <section className="mt-6 grid gap-5">
-          <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
-            <h3 className="text-lg font-semibold">Affectations et activite</h3>
-            <p className="mt-2 text-sm">Classes affectees: {instructeurData.classes_count}</p>
-            <p className="text-sm">Cours: {instructeurData.cours.total} (publies: {instructeurData.cours.published})</p>
-            <p className="text-sm">Controles a corriger: {instructeurData.controles.pending_corrections}</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {instructeurData.classes.map((c) => (
-                <span className="rounded bg-app-soft px-2 py-1 text-xs" key={c.code}>
-                  {c.code} / {c.brigade}
-                </span>
-              ))}
-              {instructeurData.classes.length === 0 ? <EmptyState message="Aucune classe assignee." /> : null}
-            </div>
-          </article>
-
-          <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
-            <h3 className="text-lg font-semibold">Creer un cours</h3>
-            <form className="mt-3 grid gap-3 md:grid-cols-2" onSubmit={handleCreateCourse}>
-              <Input label="Titre" value={courseTitle} onChange={setCourseTitle} />
-              <Input label="Description" value={courseDescription} onChange={setCourseDescription} />
-              <button className="rounded bg-app-dark px-3 py-2 text-sm font-semibold text-white md:col-span-2" type="submit">
-                Creer et publier le cours
-              </button>
-            </form>
-          </article>
-
-          <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
-            <h3 className="text-lg font-semibold">Creer un controle</h3>
-            <form className="mt-3 grid gap-3 md:grid-cols-2" onSubmit={handleCreateControl}>
-              <label className="grid gap-1 text-sm">
-                Cours
-                <select
-                  className="rounded border border-app-muted bg-white px-3 py-2"
-                  value={controlCoursId}
-                  onChange={(event) => setControlCoursId(event.target.value)}
-                  required
+          {/* Tab bar */}
+          <div className="flex gap-2 flex-wrap">
+            {(["dashboard", "cours", "controles", "corriger", "reponse_controle", "sujet"] as const).map((tab) => {
+              const labels = { dashboard: "Tableau de bord", cours: "Cours", controles: "Contrôles", corriger: "Corriger contrôle", reponse_controle: "Réponse contrôle", sujet: "Sujet fin de stage" };
+              const badge = tab === "corriger" && instructeurData.controles.pending_corrections > 0
+                ? ` (${instructeurData.controles.pending_corrections})`
+                : tab === "cours" ? ` (${instructeurData.cours.total})` : tab === "controles" ? ` (${instructeurData.controles.total})` : tab === "sujet" ? ` (${instructeurData.sujets_fin_stage.total})` : "";
+              const active = instructeurView === tab;
+              return (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => setInstructeurView(tab)}
+                  className="rounded-lg px-4 py-2 text-sm font-semibold transition"
+                  style={{
+                    background: active ? "#25343F" : "white",
+                    color: active ? "white" : "#25343F",
+                    border: "1px solid #BFC9D1",
+                  }}
                 >
-                  <option value="">Selectionner</option>
-                  {instructeurData.cours_list.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.title}
-                    </option>
-                  ))}
-                </select>
-                {instructeurData.cours_list.length === 0 ? <EmptyState message="Aucun cours disponible. Creez un cours avant un controle." /> : null}
-              </label>
-              <Input label="Nom du controle" value={controlName} onChange={setControlName} />
-              <Input label="Enonce du controle" value={controlPrompt} onChange={setControlPrompt} />
-              <button className="rounded bg-app-dark px-3 py-2 text-sm font-semibold text-white md:col-span-2" type="submit">
-                Publier controle
-              </button>
-            </form>
-          </article>
+                  {labels[tab]}{badge}
+                </button>
+              );
+            })}
+          </div>
 
-          <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
-            <h3 className="text-lg font-semibold">Corriger et publier les notes</h3>
-            <div className="mt-3 space-y-3">
-              {instructeurData.pending_submissions.length === 0 ? <p className="text-sm">Aucune soumission en attente.</p> : null}
-              {instructeurData.pending_submissions.map((s) => (
-                <div className="rounded border border-app-muted p-3" key={s.soumission_id}>
-                  <p className="text-sm font-semibold">{s.controle_name}</p>
-                  <p className="text-xs text-app-dark/70">Soumission: {s.soumission_id}</p>
-                  <div className="mt-2 grid gap-2 md:grid-cols-2">
-                    <Input label="Note /20" value={evalNote[s.soumission_id] ?? ""} onChange={(v) => setEvalNote((prev) => ({ ...prev, [s.soumission_id]: v }))} />
-                    <Input label="Correction" value={evalCorrection[s.soumission_id] ?? ""} onChange={(v) => setEvalCorrection((prev) => ({ ...prev, [s.soumission_id]: v }))} />
+          {/* Dashboard */}
+          {instructeurView === "dashboard" ? (
+            <>
+              <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
+                <h3 className="text-lg font-semibold">Affectations et activité</h3>
+                <div className="mt-3 grid gap-2 md:grid-cols-3">
+                  <div className="rounded-lg border border-app-muted/70 bg-app-soft px-3 py-2">
+                    <p className="text-xs uppercase tracking-wide text-app-dark/60">Classes</p>
+                    <p className="mt-1 text-xl font-semibold">{instructeurData.classes_count}</p>
                   </div>
-                  <button className="mt-2 rounded bg-app-dark px-3 py-1.5 text-xs text-white" type="button" onClick={() => void handleEvaluate(s.soumission_id)}>
-                    Publier note
-                  </button>
+                  <div className="rounded-lg border border-app-muted/70 bg-app-soft px-3 py-2">
+                    <p className="text-xs uppercase tracking-wide text-app-dark/60">Cours publiés</p>
+                    <p className="mt-1 text-xl font-semibold">{instructeurData.cours.published} <span className="text-sm font-normal text-app-dark/50">/ {instructeurData.cours.total}</span></p>
+                  </div>
+                  <div className="rounded-lg border border-app-muted/70 bg-app-soft px-3 py-2">
+                    <p className="text-xs uppercase tracking-wide text-app-dark/60">À corriger</p>
+                    <p className="mt-1 text-xl font-semibold text-app-accent">{instructeurData.controles.pending_corrections}</p>
+                  </div>
                 </div>
-              ))}
-            </div>
-          </article>
-
-          <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
-            <h3 className="text-lg font-semibold">Publier la correction versionnee</h3>
-            <div className="mt-3 space-y-3">
-              {instructeurData.controles_list.map((c) => (
-                <div className="rounded border border-app-muted p-3" key={c.id}>
-                  <p className="text-sm font-semibold">{c.name}</p>
-                  <Input
-                    label="Texte de correction"
-                    value={correctionText[c.id] ?? ""}
-                    onChange={(v) => setCorrectionText((prev) => ({ ...prev, [c.id]: v }))}
-                  />
-                  <button className="mt-2 rounded bg-app-dark px-3 py-1.5 text-xs text-white" type="button" onClick={() => void handlePublishCorrection(c.id)}>
-                    Publier correction
-                  </button>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {instructeurData.classes.map((c) => (
+                    <span className="rounded bg-app-soft px-2 py-1 text-xs" key={c.code}>{c.code} / {c.brigade}</span>
+                  ))}
+                  {instructeurData.classes.length === 0 ? <EmptyState message="Aucune classe assignee." /> : null}
                 </div>
-              ))}
-              {instructeurData.controles_list.length === 0 ? <EmptyState message="Aucun controle disponible." /> : null}
-            </div>
-          </article>
+                <p className="mt-4 text-sm text-app-dark/60">Notifications non lues: <span className="font-semibold text-app-dark">{instructeurData.notifications.unread_count}</span></p>
+              </article>
+            </>
+          ) : null}
 
-          <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
-            <h3 className="text-lg font-semibold">Sujets fin de stage et notifications</h3>
-            <p className="mt-2 text-sm">Sujets actifs: {instructeurData.sujets_fin_stage.active}</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {instructeurData.sujets_fin_stage.list.map((s, index) => (
-                <span className="rounded bg-app-soft px-2 py-1 text-xs" key={`${s.sujet}-${index}`}>
-                  {s.sujet} ({s.etat})
-                </span>
-              ))}
-              {instructeurData.sujets_fin_stage.list.length === 0 ? <EmptyState message="Aucun sujet de fin de stage." /> : null}
-            </div>
-            <p className="mt-4 text-sm">Notifications non lues: {instructeurData.notifications.unread_count}</p>
-          </article>
+          {/* Cours */}
+          {instructeurView === "cours" ? (
+            <>
+              <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
+                <h3 className="text-lg font-semibold">Créer un cours</h3>
+                <form className="mt-3 grid gap-3 md:grid-cols-2" onSubmit={handleCreateCourse}>
+                  <Input label="Titre" value={courseTitle} onChange={setCourseTitle} />
+                  <Input label="Description" value={courseDescription} onChange={setCourseDescription} />
+                  <label className="grid gap-1 text-sm md:col-span-2">
+                    Fichier RTF (optionnel)
+                    <input
+                      accept=".rtf,.doc,.docx,.pdf,application/rtf,text/rtf"
+                      className="rounded border border-app-muted bg-white px-3 py-2 text-sm"
+                      type="file"
+                      onChange={(e) => setCourseFichierFile(e.target.files?.[0] ?? null)}
+                    />
+                    {courseFichierFile ? <span className="text-xs text-app-dark/60">{courseFichierFile.name}</span> : null}
+                  </label>
+                  <button className="rounded bg-app-dark px-3 py-2 text-sm font-semibold text-white md:col-span-2" type="submit">
+                    Créer et publier le cours
+                  </button>
+                </form>
+              </article>
+
+              <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
+                <h3 className="text-lg font-semibold">Mes cours</h3>
+                <div className="mt-3 space-y-2">
+                  {instructeurData.cours_list.map((c) => (
+                    <div className="rounded border border-app-muted p-3" key={c.id}>
+                      <p className="text-sm font-semibold">{c.title}</p>
+                      <p className="text-xs text-app-dark/60">{c.status}</p>
+                    </div>
+                  ))}
+                  {instructeurData.cours_list.length === 0 ? <EmptyState message="Aucun cours créé." /> : null}
+                </div>
+              </article>
+            </>
+          ) : null}
+
+          {/* Contrôles */}
+          {instructeurView === "controles" ? (
+            <>
+              <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
+                <h3 className="text-lg font-semibold">Créer un contrôle</h3>
+                <form className="mt-3 grid gap-3 md:grid-cols-2" onSubmit={handleCreateControl}>
+                  <label className="grid gap-1 text-sm">
+                    Cours
+                    <select
+                      className="rounded border border-app-muted bg-white px-3 py-2"
+                      value={controlCoursId}
+                      onChange={(event) => setControlCoursId(event.target.value)}
+                      required
+                    >
+                      <option value="">Selectionner</option>
+                      {instructeurData.cours_list.map((c) => (
+                        <option key={c.id} value={c.id}>{c.title}</option>
+                      ))}
+                    </select>
+                    {instructeurData.cours_list.length === 0 ? <EmptyState message="Aucun cours disponible. Créez un cours d'abord." /> : null}
+                  </label>
+                  <Input label="Nom du contrôle" value={controlName} onChange={setControlName} />
+                  <Input label="Énoncé (texte)" value={controlPrompt} onChange={setControlPrompt} />
+                  <label className="grid gap-1 text-sm md:col-span-2">
+                    Énoncé RTF (optionnel)
+                    <input
+                      accept=".rtf,.doc,.docx,.pdf,application/rtf,text/rtf"
+                      className="rounded border border-app-muted bg-white px-3 py-2 text-sm"
+                      type="file"
+                      onChange={(e) => setControlEnonceFichier(e.target.files?.[0] ?? null)}
+                    />
+                    {controlEnonceFichier ? <span className="text-xs text-app-dark/60">{controlEnonceFichier.name}</span> : null}
+                  </label>
+                  <button className="rounded bg-app-dark px-3 py-2 text-sm font-semibold text-white md:col-span-2" type="submit">
+                    Publier contrôle
+                  </button>
+                </form>
+              </article>
+
+              <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
+                <h3 className="text-lg font-semibold">Mes contrôles</h3>
+                <div className="mt-3 space-y-2">
+                  {instructeurData.controles_list.map((c) => (
+                    <div className="rounded border border-app-muted p-3" key={c.id}>
+                      <p className="text-sm font-semibold">{c.name}</p>
+                      <p className="text-xs text-app-dark/60">{c.cours_title} — {c.status}</p>
+                    </div>
+                  ))}
+                  {instructeurData.controles_list.length === 0 ? <EmptyState message="Aucun contrôle créé." /> : null}
+                </div>
+              </article>
+            </>
+          ) : null}
+
+          {/* Corriger contrôle */}
+          {instructeurView === "corriger" ? (
+            <>
+              <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
+                <h3 className="text-lg font-semibold">Soumissions à noter</h3>
+                <div className="mt-3 space-y-3">
+                  {instructeurData.pending_submissions.length === 0 ? <EmptyState message="Aucune soumission en attente." /> : null}
+                  {instructeurData.pending_submissions.map((s) => (
+                    <div className="rounded border border-app-muted p-3" key={s.soumission_id}>
+                      <p className="text-sm font-semibold">{s.controle_name}</p>
+                      <p className="text-xs text-app-dark/70">Stagiaire #{s.stagiaire_id} · soumis le {new Date(s.submitted_at).toLocaleDateString("fr-FR")}</p>
+                      <button
+                        className="mt-1 rounded border border-app-muted px-2 py-1 text-xs text-app-dark/70 hover:bg-app-muted"
+                        type="button"
+                        onClick={() => void openFichierFromApi(`/api/instructeur/soumissions/${s.soumission_id}/fichier/`, "reponse.rtf")}
+                      >
+                        Télécharger réponse RTF
+                      </button>
+                      <div className="mt-2 grid gap-2 md:grid-cols-2">
+                        <Input label="Note /20" value={evalNote[s.soumission_id] ?? ""} onChange={(v) => setEvalNote((prev) => ({ ...prev, [s.soumission_id]: v }))} />
+                        <Input label="Commentaire" value={evalCorrection[s.soumission_id] ?? ""} onChange={(v) => setEvalCorrection((prev) => ({ ...prev, [s.soumission_id]: v }))} />
+                      </div>
+                      <button className="mt-2 rounded bg-app-dark px-3 py-1.5 text-xs text-white" type="button" onClick={() => void handleEvaluate(s.soumission_id)}>
+                        Publier la note
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </article>
+
+              <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
+                <h3 className="text-lg font-semibold">Publier la correction</h3>
+                <div className="mt-3 space-y-3">
+                  {instructeurData.controles_list.map((c) => (
+                    <div className="rounded border border-app-muted p-3" key={c.id}>
+                      <p className="text-sm font-semibold">{c.name}</p>
+                      <p className="text-xs text-app-dark/60 mb-2">{c.cours_title}</p>
+                      <Input
+                        label="Texte de correction"
+                        value={correctionText[c.id] ?? ""}
+                        onChange={(v) => setCorrectionText((prev) => ({ ...prev, [c.id]: v }))}
+                      />
+                      <button className="mt-2 rounded bg-app-dark px-3 py-1.5 text-xs text-white" type="button" onClick={() => void handlePublishCorrection(c.id)}>
+                        Publier correction
+                      </button>
+                    </div>
+                  ))}
+                  {instructeurData.controles_list.length === 0 ? <EmptyState message="Aucun contrôle disponible." /> : null}
+                </div>
+              </article>
+            </>
+          ) : null}
+
+          {/* Réponse contrôle */}
+          {instructeurView === "reponse_controle" ? (
+            <>
+              <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
+                <h3 className="text-lg font-semibold">Corrections officielles publiées</h3>
+                <p className="mt-1 text-sm text-app-dark/60">Publiez la correction modèle pour chaque contrôle. Les stagiaires pourront la consulter.</p>
+                <div className="mt-4 space-y-3">
+                  {instructeurData.controles_list.map((c) => (
+                    <div className="rounded border border-app-muted p-4" key={c.id}>
+                      <p className="text-sm font-semibold">{c.name}</p>
+                      <p className="text-xs text-app-dark/60 mb-3">{c.cours_title} — {c.status}</p>
+                      <Input
+                        label="Texte de la correction officielle"
+                        value={correctionText[c.id] ?? ""}
+                        onChange={(v) => setCorrectionText((prev) => ({ ...prev, [c.id]: v }))}
+                      />
+                      <button className="mt-2 rounded bg-app-dark px-3 py-1.5 text-xs text-white" type="button" onClick={() => void handlePublishCorrection(c.id)}>
+                        Publier correction
+                      </button>
+                    </div>
+                  ))}
+                  {instructeurData.controles_list.length === 0 ? <EmptyState message="Aucun contrôle pour le moment." /> : null}
+                </div>
+              </article>
+            </>
+          ) : null}
+
+          {/* Sujet fin de stage */}
+          {instructeurView === "sujet" ? (
+            <>
+              <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
+                <h3 className="text-lg font-semibold">Sujets fin de stage encadrés</h3>
+                <div className="mt-3 grid gap-2 md:grid-cols-2">
+                  <div className="rounded-lg border border-app-muted/70 bg-app-soft px-3 py-2">
+                    <p className="text-xs uppercase tracking-wide text-app-dark/60">Total</p>
+                    <p className="mt-1 text-xl font-semibold">{instructeurData.sujets_fin_stage.total}</p>
+                  </div>
+                  <div className="rounded-lg border border-app-muted/70 bg-app-soft px-3 py-2">
+                    <p className="text-xs uppercase tracking-wide text-app-dark/60">En cours</p>
+                    <p className="mt-1 text-xl font-semibold text-app-accent">{instructeurData.sujets_fin_stage.active}</p>
+                  </div>
+                </div>
+                <div className="mt-4 space-y-2">
+                  {instructeurData.sujets_fin_stage.list.map((s, i) => (
+                    <div className="rounded border border-app-muted p-3" key={i}>
+                      <p className="text-sm font-semibold">{s.sujet}</p>
+                      <p className="text-xs text-app-dark/60">Stagiaire #{s.stagiaire_id} · État: <span className={s.etat === "EN_COURS" ? "text-app-accent font-semibold" : ""}>{s.etat}</span></p>
+                    </div>
+                  ))}
+                  {instructeurData.sujets_fin_stage.list.length === 0 ? <EmptyState message="Aucun sujet de fin de stage assigné." /> : null}
+                </div>
+              </article>
+            </>
+          ) : null}
         </section>
       ) : null}
 
-      {user.role === "Stageaire" && stageaireData ? (
-        <section className="mt-6 grid gap-5">
-          <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
-            <h3 className="text-lg font-semibold">Classe / Brigade</h3>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {stageaireData.classes.map((entry) => (
-                <span className="rounded bg-app-soft px-2 py-1 text-xs" key={entry.classe_code}>
-                  {entry.classe_code} ({entry.brigade_code})
-                </span>
-              ))}
-              {stageaireData.classes.length === 0 ? <EmptyState message="Aucune classe ou brigade assignee." /> : null}
+      {user.role === "Stagiaire" && stageaireData ? (
+        <section className="mt-6 flex gap-0 min-h-[calc(100vh-120px)]">
+          {/* Sidebar */}
+          <aside className="sidebar-animated w-52 min-w-[13rem] flex-shrink-0 flex flex-col overflow-hidden rounded-l-2xl border border-app-muted bg-white shadow-sm">
+            {/* User info */}
+            <div className="px-4 py-4 border-b border-app-muted/60">
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-app-dark text-sm font-bold text-white">
+                  {user.username.charAt(0).toUpperCase()}
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-app-dark">{user.username}</p>
+                  <p className="text-xs text-app-dark/50">Stagiaire</p>
+                </div>
+              </div>
             </div>
-          </article>
-
-          <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
-            <h3 className="text-lg font-semibold">Controles a realiser</h3>
-            <p className="mt-2 text-sm">Disponibles: {stageaireData.controls.available_count} / En attente: {stageaireData.controls.pending_count}</p>
-            <div className="mt-3 space-y-3">
-              {stageaireData.controls_list.map((control) => {
-                const submitted = stageaireData.submitted_control_ids.includes(control.id);
+            {/* Nav items */}
+            <nav className="flex-1 px-2 py-3 space-y-1">
+              {(["dashboard", "cours", "controles", "reponse_controle", "sujet"] as const).map((tab) => {
+                const labels: Record<string, string> = { dashboard: "Tableau de bord", cours: "Cours", controles: "Contrôles", reponse_controle: "Réponse contrôle", sujet: "Sujet fin de stage" };
+                const badge = tab === "controles" && stageaireData.controls.pending_count > 0
+                  ? stageaireData.controls.pending_count
+                  : tab === "cours" ? (stageaireData.cours_list ?? []).length
+                  : tab === "reponse_controle" ? (stageaireData.soumissions_detail ?? []).length
+                  : 0;
+                const active = stageaireView === tab;
                 return (
-                  <div className="rounded border border-app-muted p-3" key={control.id}>
-                    <p className="text-sm font-semibold">{control.name}</p>
-                    <p className="text-xs text-app-dark/70">{control.cours}</p>
-                    {submitted ? (
-                      <p className="mt-1 text-xs text-emerald-700">Reponse deja soumise.</p>
-                    ) : (
-                      <>
-                        <Input
-                          label="Votre reponse"
-                          value={submissionAnswers[control.id] ?? ""}
-                          onChange={(v) => setSubmissionAnswers((prev) => ({ ...prev, [control.id]: v }))}
-                        />
-                        <button className="mt-2 rounded bg-app-dark px-3 py-1.5 text-xs text-white" type="button" onClick={() => void handleSubmitAnswer(control.id)}>
-                          Envoyer la reponse
-                        </button>
-                      </>
-                    )}
-                  </div>
+                  <button
+                    key={tab}
+                    type="button"
+                    onClick={() => setStageaireView(tab)}
+                    className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition text-left"
+                    style={{
+                      background: active ? "#25343F" : "transparent",
+                      color: active ? "white" : "#25343F",
+                      border: active ? "none" : "none",
+                    }}
+                  >
+                    <span className="flex-1 truncate">{labels[tab]}</span>
+                    {badge > 0 ? (
+                      <span
+                        className="rounded-full px-1.5 py-0.5 text-xs font-bold leading-none"
+                        style={{ background: active ? "rgba(255,255,255,0.2)" : "#FF9B51", color: "white" }}
+                      >
+                        {badge}
+                      </span>
+                    ) : null}
+                  </button>
                 );
               })}
-              {stageaireData.controls_list.length === 0 ? <EmptyState message="Aucun controle disponible pour le moment." /> : null}
+            </nav>
+            {/* Stats footer */}
+            <div className="px-4 py-3 border-t border-app-muted/60 space-y-1.5">
+              <div className="flex justify-between text-xs text-app-dark/50">
+                <span>Cours</span>
+                <span className="font-semibold text-app-dark">{(stageaireData.cours_list ?? []).length}</span>
+              </div>
+              <div className="flex justify-between text-xs text-app-dark/50">
+                <span>Soumis</span>
+                <span className="font-semibold text-app-dark">{stageaireData.controls.submitted_count}</span>
+              </div>
+              <div className="flex justify-between text-xs text-app-dark/50">
+                <span>En attente</span>
+                <span className="font-semibold text-app-accent">{stageaireData.controls.pending_count}</span>
+              </div>
+              {stageaireData.notifications.unread_count > 0 && (
+                <div className="flex justify-between text-xs text-app-dark/50">
+                  <span>Notifs</span>
+                  <span className="font-semibold text-app-accent">{stageaireData.notifications.unread_count}</span>
+                </div>
+              )}
             </div>
-          </article>
+          </aside>
 
-          <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
-            <h3 className="text-lg font-semibold">Notes publiees</h3>
-            <div className="mt-3 space-y-2">
-              {stageaireData.notes.length === 0 ? <p className="text-sm">Aucune note publiee.</p> : null}
-              {stageaireData.notes.map((note, index) => (
-                <p className="text-sm" key={`${note.controle}-${index}`}>
-                  {note.controle}: <span className="font-semibold">{note.note}</span>
-                </p>
-              ))}
-            </div>
-          </article>
+          {/* Main content */}
+          <div className="flex-1 p-6 overflow-y-auto grid gap-5 content-start">
 
-          <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
-            <h3 className="text-lg font-semibold">Notifications</h3>
-            <p className="mt-2 text-sm">Non lues: {stageaireData.notifications.unread_count}</p>
-            <div className="mt-3 space-y-2">
-              {stageaireData.notifications.latest.map((n) => (
-                <p className="text-sm" key={n.id}>
-                  [{n.type}] {n.title}
-                </p>
-              ))}
-              {stageaireData.notifications.latest.length === 0 ? <EmptyState message="Aucune notification." /> : null}
-            </div>
-          </article>
+            {/* Dashboard */}
+            {stageaireView === "dashboard" ? (
+              <>
+                <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
+                  <h3 className="text-lg font-semibold">Vue d'ensemble</h3>
+                  <div className="mt-3 grid gap-2 md:grid-cols-3">
+                    <div className="rounded-lg border border-app-muted/70 bg-app-soft px-3 py-2">
+                      <p className="text-xs uppercase tracking-wide text-app-dark/60">Cours disponibles</p>
+                      <p className="mt-1 text-xl font-semibold">{(stageaireData.cours_list ?? []).length}</p>
+                    </div>
+                    <div className="rounded-lg border border-app-muted/70 bg-app-soft px-3 py-2">
+                      <p className="text-xs uppercase tracking-wide text-app-dark/60">Contrôles soumis</p>
+                      <p className="mt-1 text-xl font-semibold">{stageaireData.controls.submitted_count}</p>
+                    </div>
+                    <div className="rounded-lg border border-app-muted/70 bg-app-soft px-3 py-2">
+                      <p className="text-xs uppercase tracking-wide text-app-dark/60">En attente</p>
+                      <p className="mt-1 text-xl font-semibold text-app-accent">{stageaireData.controls.pending_count}</p>
+                    </div>
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {stageaireData.classes.map((entry) => (
+                      <span className="rounded bg-app-soft px-2 py-1 text-xs" key={entry.classe_code}>
+                        {entry.classe_code} — {entry.brigade_code}
+                      </span>
+                    ))}
+                    {stageaireData.classes.length === 0 ? <EmptyState message="Aucune classe assignée." /> : null}
+                  </div>
+                  {stageaireData.notes.length > 0 && (
+                    <div className="mt-4">
+                      <p className="text-sm font-semibold text-app-dark/70">Notes publiées</p>
+                      <div className="mt-2 space-y-1">
+                        {stageaireData.notes.map((note, index) => (
+                          <p className="text-sm" key={`${note.controle}-${index}`}>
+                            {note.controle}: <span className="font-semibold">{note.note}/20</span>
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <p className="mt-4 text-sm text-app-dark/60">Notifications non lues: <span className="font-semibold text-app-dark">{stageaireData.notifications.unread_count}</span></p>
+                  {stageaireData.notifications.latest.length > 0 && (
+                    <div className="mt-2 space-y-1">
+                      {stageaireData.notifications.latest.map((n) => (
+                        <p className="text-xs text-app-dark/60" key={n.id}>[{n.type}] {n.title}</p>
+                      ))}
+                    </div>
+                  )}
+                </article>
+              </>
+            ) : null}
+
+            {/* Cours — list */}
+            {stageaireView === "cours" && !selectedCours ? (
+              <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
+                <h3 className="text-lg font-semibold">Cours disponibles</h3>
+                <div className="mt-3 space-y-2">
+                  {(stageaireData.cours_list ?? []).map((c) => (
+                    <div
+                      className="cursor-pointer rounded-xl border border-app-muted p-4 transition-colors hover:border-app-dark/40 hover:bg-app-soft"
+                      key={c.id}
+                      onClick={() => void handleOpenCours(c.id)}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-sm font-semibold">{c.titre}</p>
+                        <span className="text-xs text-app-dark/40">→</span>
+                      </div>
+                      {c.description ? <p className="mt-1 text-xs text-app-dark/60">{c.description}</p> : null}
+                      <p className="mt-1 text-xs text-app-dark/50">Instructeur: {c.instructeur} &mdash; {c.controles_count} contrôle(s)</p>
+                    </div>
+                  ))}
+                  {(stageaireData.cours_list ?? []).length === 0 ? <EmptyState message="Aucun cours publié pour le moment." /> : null}
+                </div>
+              </article>
+            ) : null}
+
+            {/* Cours — detail with PDF viewer */}
+            {stageaireView === "cours" && selectedCours ? (
+              <>
+                {/* Back button + header */}
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => { setSelectedCours(null); setCoursFileCache({}); }}
+                    className="flex items-center gap-1.5 rounded-lg border border-app-muted bg-white px-3 py-2 text-sm font-semibold text-app-dark shadow-sm transition hover:bg-app-soft"
+                  >
+                    ← Retour aux cours
+                  </button>
+                  <h3 className="text-lg font-semibold truncate">{selectedCours.titre}</h3>
+                </div>
+
+                {/* Course meta */}
+                <article className="rounded-2xl border border-app-muted bg-white p-5 shadow-sm">
+                  {selectedCours.description ? <p className="text-sm text-app-dark/70">{selectedCours.description}</p> : null}
+                  <p className="mt-2 text-xs text-app-dark/50">Instructeur: <span className="font-semibold text-app-dark">{selectedCours.instructeur}</span> &mdash; Déposé le {selectedCours.date_depot}</p>
+                </article>
+
+                {/* Course files — inline viewer */}
+                {selectedCours.fichiers.map((f) => {
+                  const cached = coursFileCache[f.id_cours_fichier];
+                  const isPdf = cached
+                    ? cached.mimeType === "application/pdf" || cached.name.toLowerCase().endsWith(".pdf")
+                    : f.mime_type === "application/pdf" || f.nom_fichier.toLowerCase().endsWith(".pdf");
+
+                  if (!cached) {
+                    // Still loading
+                    return (
+                      <div key={f.id_cours_fichier} className="flex items-center gap-3 rounded-xl border border-app-muted bg-white px-4 py-4">
+                        <div className="skeleton h-5 w-5 rounded" />
+                        <span className="text-sm text-app-dark/50">Chargement de {f.nom_fichier}…</span>
+                      </div>
+                    );
+                  }
+
+                  if (isPdf) {
+                    return (
+                      <InlinePdfViewer key={f.id_cours_fichier} base64={cached.base64} name={cached.name} />
+                    );
+                  }
+
+                  // Non-PDF: show label only, no download button
+                  return (
+                    <div key={f.id_cours_fichier} className="flex items-center gap-3 rounded-xl border border-app-muted bg-white px-4 py-4">
+                      <span className="text-base">📎</span>
+                      <div>
+                        <p className="text-sm font-semibold text-app-dark">{f.nom_fichier}</p>
+                        <p className="text-xs text-app-dark/40">Aperçu non disponible pour ce format</p>
+                      </div>
+                    </div>
+                  );
+                })}
+                {selectedCours.fichiers.length === 0 && (
+                  <p className="text-sm text-app-dark/40 italic">Aucun fichier joint à ce cours.</p>
+                )}
+
+                {/* Contrôles */}
+                {selectedCours.controles.length > 0 ? (
+                  <article className="rounded-2xl border border-app-muted bg-white p-5 shadow-sm">
+                    <h4 className="font-semibold text-app-dark">Contrôles associés</h4>
+                    <div className="mt-3 space-y-2">
+                      {selectedCours.controles.map((ctrl) => (
+                        <div className="rounded-xl border border-app-muted p-3" key={ctrl.id}>
+                          <p className="text-sm font-semibold">{ctrl.nom}</p>
+                          {ctrl.enonce ? <p className="mt-1 text-xs text-app-dark/60">{ctrl.enonce}</p> : null}
+                          <p className="mt-1 text-xs text-app-dark/40">Barème: {ctrl.bareme}{ctrl.date_limite ? ` | Limite: ${ctrl.date_limite}` : ""}</p>
+                          {ctrl.has_fichier && (
+                            <p className="mt-1 text-xs text-app-dark/40">📎 Énoncé: {ctrl.nom_fichier_enonce}</p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </article>
+                ) : null}
+              </>
+            ) : null}
+
+            {/* Contrôles */}
+            {stageaireView === "controles" ? (
+              <>
+                <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
+                  <h3 className="text-lg font-semibold">Contrôles à réaliser</h3>
+                  <p className="mt-1 text-sm text-app-dark/60">Disponibles: {stageaireData.controls.available_count} · Soumis: {stageaireData.controls.submitted_count} · En attente: {stageaireData.controls.pending_count}</p>
+                  <div className="mt-3 space-y-3">
+                    {stageaireData.controls_list.map((control) => {
+                      const submitted = stageaireData.submitted_control_ids.includes(control.id);
+                      return (
+                        <div className="rounded border border-app-muted p-3" key={control.id}>
+                          <p className="text-sm font-semibold">{control.name}</p>
+                          <p className="text-xs text-app-dark/70">{control.cours}{control.deadline ? ` · Limite: ${new Date(control.deadline).toLocaleDateString("fr-FR")}` : ""}</p>
+                          {submitted ? (
+                            <p className="mt-1 text-xs font-semibold text-emerald-700">✓ Réponse déjà soumise.</p>
+                          ) : (
+                            <>
+                              <Input
+                                label="Commentaire (optionnel)"
+                                value={submissionAnswers[control.id] ?? ""}
+                                onChange={(v) => setSubmissionAnswers((prev) => ({ ...prev, [control.id]: v }))}
+                              />
+                              <label className="mt-2 grid gap-1 text-xs">
+                                Fichier réponse RTF
+                                <input
+                                  accept=".rtf,.doc,.docx,.pdf,application/rtf,text/rtf"
+                                  className="rounded border border-app-muted bg-white px-2 py-1 text-xs"
+                                  type="file"
+                                  onChange={(e) => {
+                                    const f = e.target.files?.[0];
+                                    if (f) setSubmissionFiles((prev) => ({ ...prev, [control.id]: f }));
+                                  }}
+                                />
+                                {submissionFiles[control.id] ? <span className="text-app-dark/60">{submissionFiles[control.id].name}</span> : null}
+                              </label>
+                              <button className="mt-2 rounded bg-app-dark px-3 py-1.5 text-xs text-white" type="button" onClick={() => void handleSubmitAnswer(control.id)}>
+                                Envoyer la réponse
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      );
+                    })}
+                    {stageaireData.controls_list.length === 0 ? <EmptyState message="Aucun contrôle disponible pour le moment." /> : null}
+                  </div>
+                </article>
+
+                {stageaireData.notes.length > 0 ? (
+                  <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
+                    <h3 className="text-lg font-semibold">Notes publiées</h3>
+                    <div className="mt-3 space-y-2">
+                      {stageaireData.notes.map((note, index) => (
+                        <div className="flex items-center justify-between rounded border border-app-muted px-3 py-2" key={`${note.controle}-${index}`}>
+                          <p className="text-sm">{note.controle}</p>
+                          <p className="text-sm font-semibold">{note.note}/20</p>
+                        </div>
+                      ))}
+                    </div>
+                  </article>
+                ) : null}
+              </>
+            ) : null}
+
+            {/* Réponse contrôle */}
+            {stageaireView === "reponse_controle" ? (
+              <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
+                <h3 className="text-lg font-semibold">Mes réponses aux contrôles</h3>
+                <p className="mt-1 text-sm text-app-dark/60">Historique de vos soumissions et corrections officielles.</p>
+                <div className="mt-4 space-y-3">
+                  {(stageaireData.soumissions_detail ?? []).map((s) => (
+                    <div className="rounded border border-app-muted p-4" key={s.soumission_id}>
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-sm font-semibold">{s.controle_name}</p>
+                        <span className={`rounded px-2 py-0.5 text-xs font-semibold ${s.statut === "SOUMIS" ? "bg-blue-100 text-blue-700" : s.statut === "RETARD" ? "bg-red-100 text-red-700" : "bg-app-soft text-app-dark/60"}`}>
+                          {s.statut}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs text-app-dark/50">Soumis le {new Date(s.submitted_at).toLocaleDateString("fr-FR")}{s.has_fichier ? " · fichier joint" : ""}</p>
+                      {s.note !== null && (
+                        <p className="mt-2 text-sm font-semibold text-emerald-700">Note: {s.note}/20</p>
+                      )}
+                      {s.correction_publiee ? (
+                        <div className="mt-3 rounded bg-app-soft p-3">
+                          <p className="text-xs font-semibold text-app-dark/70 mb-1">{s.correction_titre ? `Correction — ${s.correction_titre}` : "Correction officielle"}</p>
+                          <p className="text-sm text-app-dark/80 whitespace-pre-wrap">{s.correction_publiee}</p>
+                        </div>
+                      ) : (
+                        <p className="mt-2 text-xs text-app-dark/40 italic">Aucune correction publiée pour ce contrôle.</p>
+                      )}
+                    </div>
+                  ))}
+                  {(stageaireData.soumissions_detail ?? []).length === 0 ? <EmptyState message="Vous n'avez encore soumis aucune réponse." /> : null}
+                </div>
+              </article>
+            ) : null}
+
+            {/* Sujet fin de stage */}
+            {stageaireView === "sujet" ? (
+              <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
+                <h3 className="text-lg font-semibold">Sujet de fin de stage</h3>
+                {stageaireData.sujet_fin_stage ? (
+                  <div className="mt-4">
+                    <div className="rounded-xl border border-app-muted bg-app-soft p-4">
+                      <p className="text-base font-semibold">{stageaireData.sujet_fin_stage.titre}</p>
+                      {stageaireData.sujet_fin_stage.description ? (
+                        <p className="mt-2 text-sm text-app-dark/70 whitespace-pre-wrap">{stageaireData.sujet_fin_stage.description}</p>
+                      ) : null}
+                      <div className="mt-3 flex flex-wrap gap-3 text-xs text-app-dark/60">
+                        <span>Encadrant: <span className="font-semibold text-app-dark">{stageaireData.sujet_fin_stage.encadrant}</span></span>
+                        <span>État: <span className={`font-semibold ${stageaireData.sujet_fin_stage.etat === "EN_COURS" ? "text-app-accent" : stageaireData.sujet_fin_stage.etat === "TERMINE" ? "text-emerald-600" : "text-red-500"}`}>{stageaireData.sujet_fin_stage.etat}</span></span>
+                        {stageaireData.sujet_fin_stage.date_affectation ? (
+                          <span>Affecté le: {new Date(stageaireData.sujet_fin_stage.date_affectation).toLocaleDateString("fr-FR")}</span>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-4">
+                    <EmptyState message="Aucun sujet de fin de stage ne vous a encore été affecté." />
+                  </div>
+                )}
+              </article>
+            ) : null}
+
+          </div>
         </section>
       ) : null}
 
-      {user.role === "Superviseur" && superviseurData ? (
-        <section className="mt-6 grid gap-5">
-          <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
-            <h3 className="text-lg font-semibold">Monitoring formation</h3>
-            <p className="mt-2 text-sm">Classes: {superviseurData.monitoring.classes_count}</p>
-            <p className="text-sm">Brigades: {superviseurData.monitoring.brigades_count}</p>
-            <p className="text-sm">Controles: {superviseurData.monitoring.controles_count}</p>
-            <p className="text-sm">Notes publiees: {superviseurData.monitoring.published_notes_count}</p>
-            <p className="text-sm">Notifications non lues: {superviseurData.notifications.unread_count}</p>
-          </article>
-          <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
-            <h3 className="text-lg font-semibold">Controles et notes par classe/brigade</h3>
-            <div className="mt-3 overflow-x-auto">
-              <table className="min-w-full text-sm">
-                <thead>
+        {user.role === "Superviseur" && superviseurData ? (
+          <section className="mt-6 grid gap-5">
+            <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
+              <h3 className="text-lg font-semibold">Monitoring formation</h3>
+              <p className="mt-2 text-sm">Classes: {superviseurData.monitoring.classes_count}</p>
+              <p className="text-sm">Brigades: {superviseurData.monitoring.brigades_count}</p>
+              <p className="text-sm">Controles: {superviseurData.monitoring.controles_count}</p>
+              <p className="text-sm">Notes publiees: {superviseurData.monitoring.published_notes_count}</p>
+              <p className="text-sm">Notifications non lues: {superviseurData.notifications.unread_count}</p>
+            </article>
+            <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
+              <h3 className="text-lg font-semibold">Controles et notes par classe/brigade</h3>
+              <div className="mt-3 overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead>
                   <tr className="border-b border-app-muted text-left">
                     <th className="py-2">Classe</th>
                     <th className="py-2">Brigade</th>
@@ -1340,14 +2100,31 @@ function DashboardPage({
                       <td className="py-2 text-sm text-app-dark/70" colSpan={5}>Aucune classe a afficher.</td>
                     </tr>
                   ) : null}
-                </tbody>
-              </table>
-            </div>
-          </article>
-        </section>
-      ) : null}
+                    </tbody>
+                  </table>
+                </div>
+              </article>
+              <ReferenceManagementSection
+                referencesData={referencesData}
+                referenceTab={referenceTab}
+                setReferenceTab={setReferenceTab}
+                newCorps={newCorps}
+                setNewCorps={setNewCorps}
+                newRank={newRank}
+                setNewRank={setNewRank}
+                newSpeciality={newSpeciality}
+                setNewSpeciality={setNewSpeciality}
+                handleCreateCorps={handleCreateCorps}
+                handleCreateRank={handleCreateRank}
+                handleCreateSpeciality={handleCreateSpeciality}
+                handleRenameCorps={handleRenameCorps}
+                handleRenameRank={handleRenameRank}
+                handleRenameSpeciality={handleRenameSpeciality}
+              />
+          </section>
+        ) : null}
 
-      {user.role === "Corrdinateur" && coordinateurData ? (
+      {user.role === "Coordinateur" && coordinateurData ? (
         <section className="mt-6 grid gap-5">
           <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
             <h3 className="text-lg font-semibold">Monitoring global (niveau coordinateur)</h3>
@@ -1560,7 +2337,7 @@ function DashboardPage({
                           }))
                         }
                       >
-                        {["Instructeur", "Stageaire", "Superviseur", "Corrdinateur", "Admin"].map((roleName) => (
+                        {["Instructeur", "Stagiaire", "Superviseur", "Coordinateur", "Admin"].map((roleName) => (
                           <option key={roleName} value={roleName}>
                             {roleName}
                           </option>
@@ -1590,7 +2367,7 @@ function DashboardPage({
                           <select
                             className="rounded-md border border-app-muted bg-white px-3 py-2 outline-none focus:border-app-accent"
                             onChange={(event) =>
-                              setAccountForm((prev) => ({ ...prev, corps_id: event.target.value, rank_id: "" }))
+                              setAccountForm((prev) => ({ ...prev, corps_id: event.target.value, rank_id: "", speciality_id: "" }))
                             }
                             required
                             value={accountForm.corps_id}
@@ -1630,11 +2407,13 @@ function DashboardPage({
                             value={accountForm.speciality_id}
                           >
                             <option value="">Selectionner</option>
-                            {referencesData.specialities.map((speciality) => (
-                              <option key={speciality.id} value={speciality.id}>
-                                {speciality.label}
-                              </option>
-                            ))}
+                            {referencesData.specialities
+                              .filter((s) => !s.corps_id || s.corps_id === accountForm.corps_id)
+                              .map((speciality) => (
+                                <option key={speciality.id} value={speciality.id}>
+                                  {speciality.label}
+                                </option>
+                              ))}
                           </select>
                         </label>
                       </>
@@ -1649,6 +2428,34 @@ function DashboardPage({
                   <p className="mt-1 text-xs text-app-dark/70">
                     Headers attendus: username,email,password,role,matricule,est_civil,corps_id,rank_id,speciality_id
                   </p>
+                  <p className="mt-1 text-xs text-app-dark/50">
+                    Roles valides: Instructeur, Stagiaire, Superviseur, Coordinateur, Admin. Pour Instructeur civil: est_civil=true, laisser corps/rank/speciality vides.
+                  </p>
+                  {referencesData.corps.length > 0 && (
+                    <details className="mt-3 text-xs">
+                      <summary className="cursor-pointer font-semibold text-app-dark/70">IDs de reference (corps / ranks / specialites)</summary>
+                      <div className="mt-2 grid gap-2">
+                        <div>
+                          <p className="font-semibold text-app-dark/60">Corps</p>
+                          {referencesData.corps.map((c) => (
+                            <p key={c.id} className="font-mono text-app-dark/50">{c.id} — {c.label}</p>
+                          ))}
+                        </div>
+                        <div>
+                          <p className="font-semibold text-app-dark/60">Ranks</p>
+                          {referencesData.ranks.map((r) => (
+                            <p key={r.id} className="font-mono text-app-dark/50">{r.id} — {r.label} ({referencesData.corps.find((c) => c.id === r.corps_id)?.label ?? r.corps_id})</p>
+                          ))}
+                        </div>
+                        <div>
+                          <p className="font-semibold text-app-dark/60">Specialites</p>
+                          {referencesData.specialities.map((s) => (
+                            <p key={s.id} className="font-mono text-app-dark/50">{s.id} — {s.label}</p>
+                          ))}
+                        </div>
+                      </div>
+                    </details>
+                  )}
                   <form className="mt-3 grid gap-3" onSubmit={handleBulkCsvUpload}>
                     <input
                       id="accounts-csv-input"
@@ -1663,6 +2470,18 @@ function DashboardPage({
                       Importer les comptes
                     </button>
                   </form>
+                  {csvErrors.length > 0 && (
+                    <div className="mt-4">
+                      <p className="text-xs font-semibold text-red-600">{csvErrors.length} erreur(s) de validation:</p>
+                      <div className="mt-1 max-h-48 overflow-y-auto rounded border border-red-200 bg-red-50 p-2">
+                        {csvErrors.map((e, i) => (
+                          <p key={i} className="text-xs text-red-700">
+                            <span className="font-semibold">Ligne {e.line}:</span> {e.error}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </SubCard>
               </div>
             ) : null}
@@ -1809,117 +2628,23 @@ function DashboardPage({
             ) : null}
 
             {adminView === "references" ? (
-              <div className="grid gap-6">
-                <PanelSection title="Corps, ranks et specialities">
-                  <p className="text-sm text-app-dark/70">
-                    Ces tables sont bootstrapees et servent de references pour tous les profils militaires.
-                  </p>
-                </PanelSection>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  <TabButton active={referenceTab === "corps"} onClick={() => setReferenceTab("corps")}>Corps</TabButton>
-                  <TabButton active={referenceTab === "ranks"} onClick={() => setReferenceTab("ranks")}>Ranks</TabButton>
-                  <TabButton active={referenceTab === "specialities"} onClick={() => setReferenceTab("specialities")}>Specialities</TabButton>
-                </div>
-
-                {referenceTab === "corps" ? (
-                  <SubCard title="Corps">
-                    <form className="grid gap-2" onSubmit={handleCreateCorps}>
-                      <Input label="Code" value={newCorps.code} onChange={(value) => setNewCorps((prev) => ({ ...prev, code: value }))} />
-                      <Input label="Libelle" value={newCorps.label} onChange={(value) => setNewCorps((prev) => ({ ...prev, label: value }))} />
-                      <button className="rounded bg-app-dark px-3 py-2 text-xs font-semibold text-white" type="submit">
-                        Ajouter corp
-                      </button>
-                    </form>
-                    <div className="mt-3 space-y-2">
-                      {referencesData.corps.map((corp) => (
-                        <button
-                          className="w-full rounded border border-app-muted px-2 py-1 text-left text-xs hover:bg-app-soft"
-                          key={corp.id}
-                          onClick={() => void handleRenameCorps(corp.id, corp.label)}
-                          type="button"
-                        >
-                          {corp.label} ({corp.code})
-                        </button>
-                      ))}
-                      {referencesData.corps.length === 0 ? <EmptyState message="Aucun corp." /> : null}
-                    </div>
-                  </SubCard>
-                ) : null}
-
-                {referenceTab === "ranks" ? (
-                  <SubCard title="Ranks">
-                    <form className="grid gap-2" onSubmit={handleCreateRank}>
-                      <Input label="Code" value={newRank.code} onChange={(value) => setNewRank((prev) => ({ ...prev, code: value }))} />
-                      <Input label="Libelle" value={newRank.label} onChange={(value) => setNewRank((prev) => ({ ...prev, label: value }))} />
-                      <label className="grid gap-1 text-sm font-medium text-app-dark">
-                        Corp
-                        <select
-                          className="rounded border border-app-muted bg-white px-3 py-2"
-                          onChange={(event) => setNewRank((prev) => ({ ...prev, corps_id: event.target.value }))}
-                          value={newRank.corps_id}
-                        >
-                          <option value="">Selectionner</option>
-                          {referencesData.corps.map((corp) => (
-                            <option key={corp.id} value={corp.id}>
-                              {corp.label}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <button className="rounded bg-app-dark px-3 py-2 text-xs font-semibold text-white" type="submit">
-                        Ajouter rank
-                      </button>
-                    </form>
-                    <div className="mt-3 space-y-2">
-                      {referencesData.ranks.map((rank) => (
-                        <button
-                          className="w-full rounded border border-app-muted px-2 py-1 text-left text-xs hover:bg-app-soft"
-                          key={rank.id}
-                          onClick={() => void handleRenameRank(rank.id, rank.label)}
-                          type="button"
-                        >
-                          {rank.label} ({rank.code})
-                        </button>
-                      ))}
-                      {referencesData.ranks.length === 0 ? <EmptyState message="Aucun rank." /> : null}
-                    </div>
-                  </SubCard>
-                ) : null}
-
-                {referenceTab === "specialities" ? (
-                  <SubCard title="Specialities">
-                    <form className="grid gap-2" onSubmit={handleCreateSpeciality}>
-                      <Input
-                        label="Code"
-                        value={newSpeciality.code}
-                        onChange={(value) => setNewSpeciality((prev) => ({ ...prev, code: value }))}
-                      />
-                      <Input
-                        label="Libelle"
-                        value={newSpeciality.label}
-                        onChange={(value) => setNewSpeciality((prev) => ({ ...prev, label: value }))}
-                      />
-                      <button className="rounded bg-app-dark px-3 py-2 text-xs font-semibold text-white" type="submit">
-                        Ajouter speciality
-                      </button>
-                    </form>
-                    <div className="mt-3 space-y-2">
-                      {referencesData.specialities.map((speciality) => (
-                        <button
-                          className="w-full rounded border border-app-muted px-2 py-1 text-left text-xs hover:bg-app-soft"
-                          key={speciality.id}
-                          onClick={() => void handleRenameSpeciality(speciality.id, speciality.label)}
-                          type="button"
-                        >
-                          {speciality.label} ({speciality.code})
-                        </button>
-                      ))}
-                      {referencesData.specialities.length === 0 ? <EmptyState message="Aucune speciality." /> : null}
-                    </div>
-                  </SubCard>
-                ) : null}
-              </div>
+              <ReferenceManagementSection
+                referencesData={referencesData}
+                referenceTab={referenceTab}
+                setReferenceTab={setReferenceTab}
+                newCorps={newCorps}
+                setNewCorps={setNewCorps}
+                newRank={newRank}
+                setNewRank={setNewRank}
+                newSpeciality={newSpeciality}
+                setNewSpeciality={setNewSpeciality}
+                handleCreateCorps={handleCreateCorps}
+                handleCreateRank={handleCreateRank}
+                handleCreateSpeciality={handleCreateSpeciality}
+                handleRenameCorps={handleRenameCorps}
+                handleRenameRank={handleRenameRank}
+                handleRenameSpeciality={handleRenameSpeciality}
+              />
             ) : null}
 
             {adminView === "events" ? (
@@ -2021,7 +2746,7 @@ function DashboardPage({
                     </label>
 
                     <label className="grid gap-1 text-sm font-medium text-app-dark">
-                      Assigner Stageaire
+                      Assigner Stagiaire
                       <select
                         className="rounded border border-app-muted bg-white px-3 py-2"
                         value={selectedStageaireId}
@@ -2029,7 +2754,7 @@ function DashboardPage({
                       >
                         <option value="">Selectionner</option>
                         {adminData.users
-                          .filter((u) => u.role === "Stageaire")
+                          .filter((u) => u.role === "Stagiaire")
                           .map((u) => (
                             <option key={u.id} value={u.id}>
                               {u.username}
@@ -2075,7 +2800,7 @@ function DashboardPage({
                           Instructeurs: {c.instructeurs.map((i) => i.username).join(", ") || "-"}
                         </p>
                         <p className="text-xs text-app-dark/70">
-                          Stageaires: {c.stageaires.map((s) => s.username).join(", ") || "-"}
+                          Stagiaires: {c.stageaires.map((s) => s.username).join(", ") || "-"}
                         </p>
                       </div>
                     ))}
@@ -2116,8 +2841,8 @@ function DashboardPage({
 
 function SettingsPage({ user, onLogout }: { user: MeResponse | null; onLogout: () => void }) {
   const { t, i18n } = useTranslation();
-  if (!user) return <Navigate to="/login" replace />;
   const [settingsView, setSettingsView] = useState<"language" | "session">("language");
+  if (!user) return <Navigate to="/login" replace />;
   const currentLanguage = i18n.language.startsWith("fr") ? "fr" : "en";
 
   const changeLanguage = async (language: "fr" | "en") => {
@@ -2128,66 +2853,66 @@ function SettingsPage({ user, onLogout }: { user: MeResponse | null; onLogout: (
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-10">
       <section className="grid gap-4 card-hover rounded-2xl border border-app-muted bg-white p-4 shadow-sm md:grid-cols-[230px_minmax(0,1fr)]">
-        <aside className="sidebar-animated rounded-xl border border-app-muted bg-app-soft/40 p-3">
-          <h1 className="mb-2 px-2 text-sm font-semibold uppercase tracking-[0.12em] text-app-dark">{t("settings.title")}</h1>
-          <div className="grid gap-2">
-            <AdminNavButton active={settingsView === "language"} onClick={() => setSettingsView("language")}>
-              {t("settings.languageTitle")}
-            </AdminNavButton>
-            <AdminNavButton active={settingsView === "session"} onClick={() => setSettingsView("session")}>
-              {t("settings.accountTitle")}
-            </AdminNavButton>
-          </div>
-        </aside>
-
-        <article className="rounded-xl border border-app-muted bg-white p-6">
-          <h1 className="text-2xl font-semibold tracking-tight text-app-dark">{t("settings.title")}</h1>
-          <p className="mt-1 text-sm text-app-dark/70">{t("settings.subtitle")}</p>
-
-          {settingsView === "language" ? (
-            <article className="mt-6 rounded-xl border border-app-muted bg-app-soft p-4">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-app-accent">{t("settings.languageTitle")}</h2>
-              <p className="mt-2 text-sm text-app-dark/80">{t("settings.languageHint")}</p>
-              <div className="mt-4 flex gap-2">
-                <button
-                  className={`rounded-md px-3 py-2 text-sm font-semibold ${
-                    currentLanguage === "fr" ? "bg-app-dark text-white" : "bg-white text-app-dark"
-                  }`}
-                  onClick={() => void changeLanguage("fr")}
-                  type="button"
-                >
-                  {t("settings.french")}
-                </button>
-                <button
-                  className={`rounded-md px-3 py-2 text-sm font-semibold ${
-                    currentLanguage === "en" ? "bg-app-dark text-white" : "bg-white text-app-dark"
-                  }`}
-                  onClick={() => void changeLanguage("en")}
-                  type="button"
-                >
-                  {t("settings.english")}
-                </button>
+            <aside className="sidebar-animated rounded-xl border border-app-muted bg-app-soft/40 p-3">
+              <h1 className="mb-2 px-2 text-sm font-semibold uppercase tracking-[0.12em] text-app-dark">{t("settings.title")}</h1>
+              <div className="grid gap-2">
+                <AdminNavButton active={settingsView === "language"} onClick={() => setSettingsView("language")}>
+                  {t("settings.languageTitle")}
+                </AdminNavButton>
+                <AdminNavButton active={settingsView === "session"} onClick={() => setSettingsView("session")}>
+                  {t("settings.accountTitle")}
+                </AdminNavButton>
               </div>
-            </article>
-          ) : null}
+            </aside>
 
-          {settingsView === "session" ? (
-            <article className="mt-6 rounded-xl border border-app-muted bg-app-soft p-4">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-app-accent">{t("settings.accountTitle")}</h2>
-              <p className="mt-2 text-sm text-app-dark/80">
-                {t("settings.accountConnected")} <span className="font-semibold">{user.username}</span> ({t(`roles.${user.role}`)})
-              </p>
-              <button
-                className="mt-4 inline-flex items-center gap-2 rounded-md bg-app-dark px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90"
-                onClick={onLogout}
-                type="button"
-              >
-                <span aria-hidden="true">↩</span>
-                {t("nav.logout")}
-              </button>
+            <article className="rounded-xl border border-app-muted bg-white p-6">
+              <h1 className="text-2xl font-semibold tracking-tight text-app-dark">{t("settings.title")}</h1>
+              <p className="mt-1 text-sm text-app-dark/70">{t("settings.subtitle")}</p>
+
+              {settingsView === "language" ? (
+                <article className="mt-6 rounded-xl border border-app-muted bg-app-soft p-4">
+                  <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-app-accent">{t("settings.languageTitle")}</h2>
+                  <p className="mt-2 text-sm text-app-dark/80">{t("settings.languageHint")}</p>
+                  <div className="mt-4 flex gap-2">
+                    <button
+                      className={`rounded-md px-3 py-2 text-sm font-semibold ${
+                        currentLanguage === "fr" ? "bg-app-dark text-white" : "bg-white text-app-dark"
+                      }`}
+                      onClick={() => void changeLanguage("fr")}
+                      type="button"
+                    >
+                      {t("settings.french")}
+                    </button>
+                    <button
+                      className={`rounded-md px-3 py-2 text-sm font-semibold ${
+                        currentLanguage === "en" ? "bg-app-dark text-white" : "bg-white text-app-dark"
+                      }`}
+                      onClick={() => void changeLanguage("en")}
+                      type="button"
+                    >
+                      {t("settings.english")}
+                    </button>
+                  </div>
+                </article>
+              ) : null}
+
+              {settingsView === "session" ? (
+                <article className="mt-6 rounded-xl border border-app-muted bg-app-soft p-4">
+                  <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-app-accent">{t("settings.accountTitle")}</h2>
+                  <p className="mt-2 text-sm text-app-dark/80">
+                    {t("settings.accountConnected")} <span className="font-semibold">{user.username}</span> ({t(`roles.${user.role}`)})
+                  </p>
+                  <button
+                    className="mt-4 inline-flex items-center gap-2 rounded-md bg-app-dark px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90"
+                    onClick={onLogout}
+                    type="button"
+                  >
+                    <span aria-hidden="true">↩</span>
+                    {t("nav.logout")}
+                  </button>
+                </article>
+              ) : null}
             </article>
-          ) : null}
-        </article>
       </section>
     </main>
   );
@@ -2427,7 +3152,7 @@ function AppShell() {
       <div className="route-transition" key={location.pathname}>
         <Routes>
           <Route path="/" element={<HomePage />} />
-          <Route path="/dashboard" element={<DashboardPage onLoadProfile={loadProfile} user={user} apiFetch={apiFetch} />} />
+          <Route path="/dashboard" element={<DashboardPage onLoadProfile={loadProfile} user={user} apiFetch={apiFetch} onSessionInvalid={clearSession} />} />
           <Route path="/login" element={<LoginPage error={error} onLogin={login} />} />
           <Route path="/signup" element={<SignupPage error={error} onSignup={signup} references={publicReferences} />} />
           <Route path="/settings" element={<SettingsPage user={user} onLogout={clearSession} />} />

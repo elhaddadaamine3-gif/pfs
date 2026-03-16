@@ -115,7 +115,7 @@ class ApiTests(APITestCase):
                 "username": "missing-matricule",
                 "password": "new-password-123",
                 "email": "missing@example.com",
-                "role": UserProfile.ROLE_STAGEAIRE,
+                "role": UserProfile.ROLE_STAGIAIRE,
             },
             format="json",
         )
@@ -159,6 +159,69 @@ class ApiTests(APITestCase):
         self.assertEqual(response.data["role"], UserProfile.ROLE_INSTRUCTEUR)
         self.assertEqual(response.data["matricule"], "")
 
+    def test_supervisor_can_manage_references(self):
+        user_model = get_user_model()
+        supervisor = user_model.objects.create_user(username="supervisor", password="sup-pass-1")
+        UserProfile.objects.create(
+            user=supervisor,
+            role=UserProfile.ROLE_SUPERVISEUR,
+            matricule="SUP-100",
+            corps=self.corps,
+            rank=self.rank,
+            speciality=self.speciality,
+        )
+        self.client.force_authenticate(user=supervisor)
+
+        refs_response = self.client.get("/api/admin/references/")
+        self.assertEqual(refs_response.status_code, status.HTTP_200_OK)
+
+        corp_response = self.client.post(
+            "/api/admin/references/corps/",
+            {"code": "SUP_CORP", "label": "Superviseur Corps"},
+            format="json",
+        )
+        self.assertEqual(corp_response.status_code, status.HTTP_201_CREATED)
+        corp_id = corp_response.data["id"]
+
+        rank_response = self.client.post(
+            "/api/admin/references/ranks/",
+            {"code": "SUP_RANK", "label": "Superviseur Rank", "corps_id": corp_id},
+            format="json",
+        )
+        self.assertEqual(rank_response.status_code, status.HTTP_201_CREATED)
+        rank_id = rank_response.data["id"]
+
+        speciality_response = self.client.post(
+            "/api/admin/references/specialities/",
+            {"code": "SUP_SPEC", "label": "Superviseur Speciality", "corps_id": corp_id},
+            format="json",
+        )
+        self.assertEqual(speciality_response.status_code, status.HTTP_201_CREATED)
+        speciality_id = speciality_response.data["id"]
+
+        patch_corp = self.client.patch(
+            f"/api/admin/references/corps/{corp_id}/",
+            {"label": "Superviseur Corps (maj)"},
+            format="json",
+        )
+        self.assertEqual(patch_corp.status_code, status.HTTP_200_OK)
+
+        patch_speciality = self.client.patch(
+            f"/api/admin/references/specialities/{speciality_id}/",
+            {"label": "Superviseur Speciality (maj)"},
+            format="json",
+        )
+        self.assertEqual(patch_speciality.status_code, status.HTTP_200_OK)
+
+        patch_rank = self.client.patch(
+            f"/api/admin/references/ranks/{rank_id}/",
+            {"label": "Superviseur Rank (maj)"},
+            format="json",
+        )
+        self.assertEqual(patch_rank.status_code, status.HTTP_200_OK)
+
+        self.client.force_authenticate(user=None)
+
     def test_instructeur_dashboard_endpoint(self):
         user_model = get_user_model()
         instructeur = user_model.objects.create_user(username="instr", password="pass-1234")
@@ -200,7 +263,7 @@ class ApiTests(APITestCase):
         instructeur = user_model.objects.create_user(username="instr2", password="pass-1234")
         UserProfile.objects.create(user=instructeur, role=UserProfile.ROLE_INSTRUCTEUR, matricule="I-002")
         stageaire = user_model.objects.create_user(username="stag2", password="pass-1234")
-        UserProfile.objects.create(user=stageaire, role=UserProfile.ROLE_STAGEAIRE, matricule="S-100")
+        UserProfile.objects.create(user=stageaire, role=UserProfile.ROLE_STAGIAIRE, matricule="S-100")
 
         specialite = Specialite.objects.create(libelle="Physique")
         cours = Cours.objects.create(titre="Mecanique", instructeur=instructeur, specialite=specialite, statut=Cours.STATUT_PUBLIE)
@@ -214,7 +277,7 @@ class ApiTests(APITestCase):
         response = self.client.get("/api/dashboard/stageaire/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["role"], UserProfile.ROLE_STAGEAIRE)
+        self.assertEqual(response.data["role"], UserProfile.ROLE_STAGIAIRE)
         self.assertEqual(response.data["controls"]["available_count"], 1)
         self.assertEqual(len(response.data["notes"]), 1)
 
@@ -223,7 +286,7 @@ class ApiTests(APITestCase):
         instructeur = user_model.objects.create_user(username="instr3", password="pass-1234")
         UserProfile.objects.create(user=instructeur, role=UserProfile.ROLE_INSTRUCTEUR, matricule="I-003")
         stageaire = user_model.objects.create_user(username="stag3", password="pass-1234")
-        UserProfile.objects.create(user=stageaire, role=UserProfile.ROLE_STAGEAIRE, matricule="S-300")
+        UserProfile.objects.create(user=stageaire, role=UserProfile.ROLE_STAGIAIRE, matricule="S-300")
 
         instructeur_token = self.client.post(
             "/api/token/",
@@ -296,7 +359,7 @@ class ApiTests(APITestCase):
         UserProfile.objects.create(user=superviseur, role=UserProfile.ROLE_SUPERVISEUR, matricule="SP-1")
         UserProfile.objects.create(user=coordinateur, role=UserProfile.ROLE_COORDINATEUR, matricule="CO-1")
         UserProfile.objects.create(user=instructeur, role=UserProfile.ROLE_INSTRUCTEUR, matricule="I-4")
-        UserProfile.objects.create(user=stageaire, role=UserProfile.ROLE_STAGEAIRE, matricule="S-4")
+        UserProfile.objects.create(user=stageaire, role=UserProfile.ROLE_STAGIAIRE, matricule="S-4")
 
         brigade = Brigade.objects.create(code_brigade="B-02", libelle="Brigade 2")
         classe = Classe.objects.create(code_classe="C-02", libelle="Classe 2", brigade=brigade)
@@ -344,7 +407,7 @@ class ApiTests(APITestCase):
                 "username": "bulk-one",
                 "email": "bulk-one@example.com",
                 "password": "StrongPass!123",
-                "role": UserProfile.ROLE_STAGEAIRE,
+                "role": UserProfile.ROLE_STAGIAIRE,
                 "matricule": "S-BULK-1",
                 "corps_id": self.corps.id_corps,
                 "rank_id": self.rank.id_rank,
@@ -413,7 +476,7 @@ class ApiTests(APITestCase):
         class_id = create_class_response.data["id"]
 
         stageaire_user = get_user_model().objects.create_user(username="stage-class", password="pass-1234")
-        UserProfile.objects.create(user=stageaire_user, role=UserProfile.ROLE_STAGEAIRE, matricule="S-CLS-1")
+        UserProfile.objects.create(user=stageaire_user, role=UserProfile.ROLE_STAGIAIRE, matricule="S-CLS-1")
 
         assign_stageaire_response = self.client.post(
             f"/api/admin/classes/{class_id}/assign-stageaire/",

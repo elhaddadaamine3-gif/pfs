@@ -10,21 +10,21 @@ def generate_id() -> str:
 
 class UserProfile(models.Model):
     ROLE_INSTRUCTEUR = "Instructeur"
-    ROLE_STAGEAIRE = "Stageaire"
+    ROLE_STAGIAIRE = "Stagiaire"
     ROLE_ADMIN = "Admin"
     ROLE_SUPERVISEUR = "Superviseur"
-    ROLE_COORDINATEUR = "Corrdinateur"
+    ROLE_COORDINATEUR = "Coordinateur"
 
     ROLE_CHOICES = [
         (ROLE_INSTRUCTEUR, "Instructeur"),
-        (ROLE_STAGEAIRE, "Stageaire"),
+        (ROLE_STAGIAIRE, "Stagiaire"),
         (ROLE_ADMIN, "Admin"),
         (ROLE_SUPERVISEUR, "Superviseur"),
-        (ROLE_COORDINATEUR, "Corrdinateur"),
+        (ROLE_COORDINATEUR, "Coordinateur"),
     ]
 
     user = models.OneToOneField(get_user_model(), on_delete=models.CASCADE, related_name="profile")
-    role = models.CharField(max_length=32, choices=ROLE_CHOICES, default=ROLE_STAGEAIRE)
+    role = models.CharField(max_length=32, choices=ROLE_CHOICES, default=ROLE_STAGIAIRE)
     matricule = models.CharField(max_length=50, blank=True, default="")
     est_civil = models.BooleanField(default=False)
     corps = models.ForeignKey("Corps", on_delete=models.SET_NULL, null=True, blank=True, related_name="profiles")
@@ -71,6 +71,7 @@ class Speciality(models.Model):
     id_speciality = models.CharField(max_length=50, primary_key=True, default=generate_id, editable=False)
     code = models.CharField(max_length=50, unique=True)
     label = models.CharField(max_length=255, unique=True)
+    corps = models.ForeignKey("Corps", on_delete=models.CASCADE, null=True, blank=True, related_name="specialities")
 
     def __str__(self):
         return self.label
@@ -239,6 +240,9 @@ class Controle(models.Model):
     statut = models.CharField(max_length=30, choices=STATUT_CHOICES, default=STATUT_BROUILLON)
     enonce = models.TextField(blank=True, default="")
     date_publication = models.DateTimeField(null=True, blank=True)
+    fichier_enonce = models.BinaryField(null=True, blank=True)
+    nom_fichier_enonce = models.CharField(max_length=255, blank=True, default="")
+    mime_type_enonce = models.CharField(max_length=100, blank=True, default="")
 
 
 class SoumissionControle(models.Model):
@@ -258,6 +262,8 @@ class SoumissionControle(models.Model):
     stagiaire = models.ForeignKey(get_user_model(), on_delete=models.CASCADE, related_name="soumissions")
     date_soumission = models.DateTimeField(default=timezone.now)
     fichier_reponse = models.BinaryField(null=True, blank=True)
+    nom_fichier_reponse = models.CharField(max_length=255, blank=True, default="")
+    mime_type_reponse = models.CharField(max_length=100, blank=True, default="")
     commentaire = models.TextField(blank=True, default="")
     statut = models.CharField(max_length=30, choices=STATUT_CHOICES, default=STATUT_SOUMIS)
 

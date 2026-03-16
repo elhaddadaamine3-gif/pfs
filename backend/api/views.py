@@ -1,3 +1,4 @@
+import base64
 import csv
 import io
 
@@ -20,6 +21,7 @@ from .models import (
     ControleCorrection,
     Corps,
     Cours,
+    CoursFichier,
     Evaluation,
     EventAudit,
     Inscription,
@@ -45,6 +47,8 @@ def resolve_reference_entities(corps_id, rank_id, speciality_id):
         return None, None, None, Response({"detail": "speciality not found"}, status=status.HTTP_400_BAD_REQUEST)
     if corps and rank and rank.corps_id != corps.id_corps:
         return None, None, None, Response({"detail": "rank does not belong to selected corps"}, status=status.HTTP_400_BAD_REQUEST)
+    if corps and speciality and speciality.corps_id and speciality.corps_id != corps.id_corps:
+        return None, None, None, Response({"detail": "speciality does not belong to selected corps"}, status=status.HTTP_400_BAD_REQUEST)
     return corps, rank, speciality, None
 
 
@@ -84,6 +88,12 @@ def log_event(
         message=message,
         metadata=metadata or {},
     )
+ 
+
+def ensure_reference_manager(profile):
+    if profile.role not in {UserProfile.ROLE_ADMIN, UserProfile.ROLE_SUPERVISEUR}:
+        return Response({"detail": "Forbidden for this role"}, status=status.HTTP_403_FORBIDDEN)
+    return None
 
 
 class HealthView(APIView):
@@ -105,8 +115,8 @@ class PublicReferenceDataView(APIView):
                     for r in Rank.objects.select_related("corps").all().order_by("corps__label", "label")
                 ],
                 "specialities": [
-                    {"id": s.id_speciality, "code": s.code, "label": s.label}
-                    for s in Speciality.objects.all().order_by("label")
+                    {"id": s.id_speciality, "code": s.code, "label": s.label, "corps_id": s.corps_id}
+                    for s in Speciality.objects.select_related("corps").all().order_by("corps__label", "label")
                 ],
             }
         )
@@ -140,7 +150,7 @@ class SignupView(APIView):
         username = request.data.get("username")
         password = request.data.get("password")
         email = request.data.get("email", "")
-        role = request.data.get("role", UserProfile.ROLE_STAGEAIRE)
+        role = request.data.get("role", UserProfile.ROLE_STAGIAIRE)
         matricule = (request.data.get("matricule") or "").strip()
         est_civil = bool(request.data.get("est_civil", False))
         corps_id = request.data.get("corps_id")
@@ -318,23 +328,37 @@ class StageaireDashboardView(APIView):
 
     def get(self, request):
         profile, _ = UserProfile.objects.get_or_create(user=request.user)
-        if profile.role != UserProfile.ROLE_STAGEAIRE:
+        if profile.role != UserProfile.ROLE_STAGIAIRE:
             return Response({"detail": "Forbidden for this role"}, status=status.HTTP_403_FORBIDDEN)
 
-        active_inscriptions = Inscription.objects.filter(
-            stagiaire=request.user,
-            statut=Inscription.STATUT_ACTIVE,
-        ).select_related("cours")
-        controle_ids = Controle.objects.filter(
-            cours__in=active_inscriptions.values_list("cours_id", flat=True),
-            statut=Controle.STATUT_PUBLIE,
-        )
+        controle_ids = Controle.objects.filter(statut=Controle.STATUT_PUBLIE)
         soumissions = SoumissionControle.objects.filter(stagiaire=request.user).select_related("controle")
         notes = Evaluation.objects.filter(
             soumission__stagiaire=request.user,
             est_publiee=True,
         ).select_related("soumission", "soumission__controle")
         unread_notifications = Notification.objects.filter(destinataire=request.user, est_lue=False)
+
+        cours_publies = Cours.objects.filter(statut=Cours.STATUT_PUBLIE).select_related("instructeur__profile")
+
+        sujet_affectation = AffectationSujetStage.objects.filter(stagiaire=request.user).select_related("sujet", "encadrant").first()
+
+        # Build soumissions with correction info
+        soumissions_detail = []
+        for s in soumissions.select_related("controle").order_by("-date_soumission")[:20]:
+            latest_correction = s.controle.corrections.order_by("-version_no").first()
+            eval_obj = getattr(s, "evaluation", None)
+            soumissions_detail.append({
+                "soumission_id": s.id_soumission,
+                "controle_id": s.controle_id,
+                "controle_name": s.controle.nom,
+                "statut": s.statut,
+                "submitted_at": s.date_soumission,
+                "has_fichier": bool(s.fichier_reponse),
+                "note": str(eval_obj.note) if eval_obj and eval_obj.est_publiee else None,
+                "correction_publiee": latest_correction.texte_correction if latest_correction else None,
+                "correction_titre": latest_correction.titre if latest_correction else None,
+            })
 
         return Response(
             {
@@ -349,6 +373,16 @@ class StageaireDashboardView(APIView):
                     for s in StagiaireClasse.objects.filter(stagiaire=request.user)
                     .filter(Q(date_fin__isnull=True) | Q(date_fin__gte=timezone.now().date()))
                     .select_related("classe", "classe__brigade")[:10]
+                ],
+                "cours_list": [
+                    {
+                        "id": c.id_cours,
+                        "titre": c.titre,
+                        "description": c.description,
+                        "instructeur": c.instructeur.username,
+                        "controles_count": c.controles.filter(statut=Controle.STATUT_PUBLIE).count(),
+                    }
+                    for c in cours_publies.order_by("-date_depot")[:30]
                 ],
                 "controls": {
                     "available_count": controle_ids.count(),
@@ -365,6 +399,7 @@ class StageaireDashboardView(APIView):
                     for c in controle_ids.select_related("cours").order_by("date_limite")[:20]
                 ],
                 "submitted_control_ids": list(soumissions.values_list("controle_id", flat=True)),
+                "soumissions_detail": soumissions_detail,
                 "notes": [
                     {
                         "controle": note.soumission.controle.nom,
@@ -373,6 +408,13 @@ class StageaireDashboardView(APIView):
                     }
                     for note in notes.order_by("-date_publication")[:20]
                 ],
+                "sujet_fin_stage": {
+                    "titre": sujet_affectation.sujet.titre if sujet_affectation else None,
+                    "description": sujet_affectation.sujet.description if sujet_affectation else None,
+                    "etat": sujet_affectation.etat if sujet_affectation else None,
+                    "encadrant": sujet_affectation.encadrant.username if sujet_affectation else None,
+                    "date_affectation": sujet_affectation.date_affectation if sujet_affectation else None,
+                } if sujet_affectation else None,
                 "notifications": {
                     "unread_count": unread_notifications.count(),
                     "latest": [
@@ -549,8 +591,9 @@ class AdminCreateAccountView(APIView):
 
     def post(self, request):
         profile, _ = UserProfile.objects.get_or_create(user=request.user)
-        if profile.role != UserProfile.ROLE_ADMIN:
-            return Response({"detail": "Forbidden for this role"}, status=status.HTTP_403_FORBIDDEN)
+        permission_error = ensure_reference_manager(profile)
+        if permission_error:
+            return permission_error
 
         username = (request.data.get("username") or "").strip()
         email = (request.data.get("email") or "").strip()
@@ -623,20 +666,32 @@ class AdminBulkCreateAccountsCsvView(APIView):
 
     def post(self, request):
         profile, _ = UserProfile.objects.get_or_create(user=request.user)
-        if profile.role != UserProfile.ROLE_ADMIN:
-            return Response({"detail": "Forbidden for this role"}, status=status.HTTP_403_FORBIDDEN)
+        permission_error = ensure_reference_manager(profile)
+        if permission_error:
+            return permission_error
 
         csv_content = request.data.get("csv_content")
         if not csv_content:
             return Response({"detail": "csv_content is required"}, status=status.HTTP_400_BAD_REQUEST)
 
-        reader = csv.DictReader(io.StringIO(csv_content))
+        cleaned = csv_content.replace("\r\n", "\n").replace("\r", "\n").lstrip("\ufeff")
+        first_line = cleaned.split("\n")[0]
+        delimiter = ";" if first_line.count(";") > first_line.count(",") else ","
+        reader = csv.DictReader(io.StringIO(cleaned), delimiter=delimiter)
         expected = {"username", "email", "password", "role", "matricule", "est_civil", "corps_id", "rank_id", "speciality_id"}
-        if not reader.fieldnames or set(reader.fieldnames) != expected:
+        if reader.fieldnames:
+            reader.fieldnames = [f.strip() for f in reader.fieldnames]
+        actual = set(reader.fieldnames or [])
+        missing = expected - actual
+        extra = actual - expected
+        if not actual or actual != expected:
+            msg = "CSV headers must be: username,email,password,role,matricule,est_civil,corps_id,rank_id,speciality_id"
+            if missing:
+                msg += f" | Colonnes manquantes: {', '.join(sorted(missing))}"
+            if extra:
+                msg += f" | Colonnes inconnues: {', '.join(sorted(extra))}"
             return Response(
-                {
-                    "detail": "CSV headers must be: username,email,password,role,matricule,est_civil,corps_id,rank_id,speciality_id"
-                },
+                {"detail": msg},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -722,8 +777,9 @@ class AdminReferenceDataView(APIView):
 
     def get(self, request):
         profile, _ = UserProfile.objects.get_or_create(user=request.user)
-        if profile.role != UserProfile.ROLE_ADMIN:
-            return Response({"detail": "Forbidden for this role"}, status=status.HTTP_403_FORBIDDEN)
+        permission_error = ensure_reference_manager(profile)
+        if permission_error:
+            return permission_error
         return Response(
             {
                 "corps": [{"id": c.id_corps, "code": c.code, "label": c.label} for c in Corps.objects.all().order_by("label")],
@@ -732,8 +788,8 @@ class AdminReferenceDataView(APIView):
                     for r in Rank.objects.select_related("corps").all().order_by("corps__label", "label")
                 ],
                 "specialities": [
-                    {"id": s.id_speciality, "code": s.code, "label": s.label}
-                    for s in Speciality.objects.all().order_by("label")
+                    {"id": s.id_speciality, "code": s.code, "label": s.label, "corps_id": s.corps_id}
+                    for s in Speciality.objects.select_related("corps").all().order_by("corps__label", "label")
                 ],
             }
         )
@@ -774,8 +830,9 @@ class AdminCorpsView(APIView):
 
     def post(self, request):
         profile, _ = UserProfile.objects.get_or_create(user=request.user)
-        if profile.role != UserProfile.ROLE_ADMIN:
-            return Response({"detail": "Forbidden for this role"}, status=status.HTTP_403_FORBIDDEN)
+        permission_error = ensure_reference_manager(profile)
+        if permission_error:
+            return permission_error
         code = (request.data.get("code") or "").strip()
         label = (request.data.get("label") or "").strip()
         if not code or not label:
@@ -794,8 +851,9 @@ class AdminCorpsView(APIView):
 
     def patch(self, request, corps_id):
         profile, _ = UserProfile.objects.get_or_create(user=request.user)
-        if profile.role != UserProfile.ROLE_ADMIN:
-            return Response({"detail": "Forbidden for this role"}, status=status.HTTP_403_FORBIDDEN)
+        permission_error = ensure_reference_manager(profile)
+        if permission_error:
+            return permission_error
         corps = Corps.objects.filter(id_corps=corps_id).first()
         if not corps:
             return Response({"detail": "corps not found"}, status=status.HTTP_404_NOT_FOUND)
@@ -850,8 +908,9 @@ class AdminRanksView(APIView):
 
     def patch(self, request, rank_id):
         profile, _ = UserProfile.objects.get_or_create(user=request.user)
-        if profile.role != UserProfile.ROLE_ADMIN:
-            return Response({"detail": "Forbidden for this role"}, status=status.HTTP_403_FORBIDDEN)
+        permission_error = ensure_reference_manager(profile)
+        if permission_error:
+            return permission_error
         rank = Rank.objects.filter(id_rank=rank_id).first()
         if not rank:
             return Response({"detail": "rank not found"}, status=status.HTTP_404_NOT_FOUND)
@@ -891,30 +950,48 @@ class AdminSpecialitiesView(APIView):
             return Response({"detail": "Forbidden for this role"}, status=status.HTTP_403_FORBIDDEN)
         code = (request.data.get("code") or "").strip()
         label = (request.data.get("label") or "").strip()
+        corps_id = request.data.get("corps_id")
+        corps = None
+        if corps_id:
+            corps = Corps.objects.filter(id_corps=corps_id).first()
+            if not corps:
+                return Response({"detail": "corps not found"}, status=status.HTTP_400_BAD_REQUEST)
         if not code or not label:
             return Response({"detail": "code and label are required"}, status=status.HTTP_400_BAD_REQUEST)
         if Speciality.objects.filter(models.Q(code__iexact=code) | models.Q(label__iexact=label)).exists():
             return Response({"detail": "speciality already exists"}, status=status.HTTP_400_BAD_REQUEST)
-        speciality = Speciality.objects.create(code=code, label=label)
+        speciality = Speciality.objects.create(code=code, label=label, corps=corps)
         log_event(
             request=request,
             event_type="admin.reference.speciality.created",
             target_type="speciality",
             target_id=speciality.id_speciality,
             message=f"Admin created speciality {speciality.label}",
+            metadata={"corps_id": speciality.corps_id} if speciality.corps_id else {},
         )
         return Response(
-            {"id": speciality.id_speciality, "code": speciality.code, "label": speciality.label},
+            {
+                "id": speciality.id_speciality,
+                "code": speciality.code,
+                "label": speciality.label,
+                "corps_id": speciality.corps_id,
+            },
             status=status.HTTP_201_CREATED,
         )
 
     def patch(self, request, speciality_id):
         profile, _ = UserProfile.objects.get_or_create(user=request.user)
-        if profile.role != UserProfile.ROLE_ADMIN:
-            return Response({"detail": "Forbidden for this role"}, status=status.HTTP_403_FORBIDDEN)
+        permission_error = ensure_reference_manager(profile)
+        if permission_error:
+            return permission_error
         speciality = Speciality.objects.filter(id_speciality=speciality_id).first()
         if not speciality:
             return Response({"detail": "speciality not found"}, status=status.HTTP_404_NOT_FOUND)
+        target_corps = speciality.corps
+        if request.data.get("corps_id"):
+            target_corps = Corps.objects.filter(id_corps=request.data.get("corps_id")).first()
+            if not target_corps:
+                return Response({"detail": "corps not found"}, status=status.HTTP_400_BAD_REQUEST)
         code = (request.data.get("code") or speciality.code).strip()
         label = (request.data.get("label") or speciality.label).strip()
         duplicate = Speciality.objects.exclude(id_speciality=speciality_id).filter(
@@ -924,15 +1001,17 @@ class AdminSpecialitiesView(APIView):
             return Response({"detail": "speciality already exists"}, status=status.HTTP_400_BAD_REQUEST)
         speciality.code = code
         speciality.label = label
-        speciality.save(update_fields=["code", "label"])
+        speciality.corps = target_corps
+        speciality.save(update_fields=["code", "label", "corps"])
         log_event(
             request=request,
             event_type="admin.reference.speciality.updated",
             target_type="speciality",
             target_id=speciality.id_speciality,
             message=f"Admin updated speciality {speciality.label}",
+            metadata={"corps_id": speciality.corps_id} if speciality.corps_id else {},
         )
-        return Response({"id": speciality.id_speciality, "code": speciality.code, "label": speciality.label})
+        return Response({"id": speciality.id_speciality, "code": speciality.code, "label": speciality.label, "corps_id": speciality.corps_id})
 
 
 class AdminSubjectsView(APIView):
@@ -1215,8 +1294,8 @@ class AdminAssignStageaireToClassView(APIView):
         stageaire = user_model.objects.filter(id=stageaire_id).first()
         if not stageaire:
             return Response({"detail": "stageaire not found"}, status=status.HTTP_404_NOT_FOUND)
-        if getattr(getattr(stageaire, "profile", None), "role", None) != UserProfile.ROLE_STAGEAIRE:
-            return Response({"detail": "target user is not Stageaire"}, status=status.HTTP_400_BAD_REQUEST)
+        if getattr(getattr(stageaire, "profile", None), "role", None) != UserProfile.ROLE_STAGIAIRE:
+            return Response({"detail": "target user is not Stagiaire"}, status=status.HTTP_400_BAD_REQUEST)
 
         today = timezone.now().date()
         StagiaireClasse.objects.filter(stagiaire=stageaire, date_fin__isnull=True).exclude(classe=classe).update(date_fin=today)
@@ -1238,7 +1317,7 @@ class AdminAssignStageaireToClassView(APIView):
             event_type="admin.class.stageaire_assigned",
             target_type="class",
             target_id=classe.id_classe,
-            message=f"Stageaire assigned to class {classe.code_classe}",
+            message=f"Stagiaire assigned to class {classe.code_classe}",
             metadata={"stageaire_id": stageaire.id},
         )
 
@@ -1387,24 +1466,27 @@ class StageaireSubmitControleView(APIView):
 
     def post(self, request, controle_id):
         profile, _ = UserProfile.objects.get_or_create(user=request.user)
-        if profile.role != UserProfile.ROLE_STAGEAIRE:
+        if profile.role != UserProfile.ROLE_STAGIAIRE:
             return Response({"detail": "Forbidden for this role"}, status=status.HTTP_403_FORBIDDEN)
 
         controle = Controle.objects.filter(id_controle=controle_id, statut=Controle.STATUT_PUBLIE).first()
         if not controle:
             return Response({"detail": "controle not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        is_enrolled = Inscription.objects.filter(
-            stagiaire=request.user,
-            cours=controle.cours,
-            statut=Inscription.STATUT_ACTIVE,
-        ).exists()
-        if not is_enrolled:
-            return Response({"detail": "not enrolled in this course"}, status=status.HTTP_403_FORBIDDEN)
-
         commentaire = (request.data.get("commentaire") or "").strip()
-        if not commentaire:
-            return Response({"detail": "commentaire is required"}, status=status.HTTP_400_BAD_REQUEST)
+        fichier_b64 = (request.data.get("fichier_base64") or "").strip()
+        nom_fichier = (request.data.get("nom_fichier") or "").strip()
+        mime_type = (request.data.get("mime_type") or "application/rtf").strip()
+
+        if not commentaire and not fichier_b64:
+            return Response({"detail": "commentaire ou fichier_base64 est requis"}, status=status.HTTP_400_BAD_REQUEST)
+
+        fichier_bytes = None
+        if fichier_b64:
+            try:
+                fichier_bytes = base64.b64decode(fichier_b64)
+            except Exception:
+                return Response({"detail": "fichier_base64 invalide"}, status=status.HTTP_400_BAD_REQUEST)
 
         soumission, created = SoumissionControle.objects.get_or_create(
             controle=controle,
@@ -1413,20 +1495,29 @@ class StageaireSubmitControleView(APIView):
                 "commentaire": commentaire,
                 "date_soumission": timezone.now(),
                 "statut": SoumissionControle.STATUT_SOUMIS,
+                "fichier_reponse": fichier_bytes,
+                "nom_fichier_reponse": nom_fichier,
+                "mime_type_reponse": mime_type if fichier_bytes else "",
             },
         )
         if not created:
+            update_fields = ["commentaire", "date_soumission", "statut"]
             soumission.commentaire = commentaire
             soumission.date_soumission = timezone.now()
             soumission.statut = SoumissionControle.STATUT_SOUMIS
-            soumission.save(update_fields=["commentaire", "date_soumission", "statut"])
+            if fichier_bytes is not None:
+                soumission.fichier_reponse = fichier_bytes
+                soumission.nom_fichier_reponse = nom_fichier
+                soumission.mime_type_reponse = mime_type
+                update_fields += ["fichier_reponse", "nom_fichier_reponse", "mime_type_reponse"]
+            soumission.save(update_fields=update_fields)
 
         log_event(
             request=request,
             event_type="stageaire.controle.submitted",
             target_type="controle",
             target_id=controle.id_controle,
-            message=f"Stageaire submitted controle {controle.nom}",
+            message=f"Stagiaire submitted controle {controle.nom}",
             metadata={"soumission_id": soumission.id_soumission},
         )
 
@@ -1525,3 +1616,220 @@ class InstructeurPublishCorrectionView(APIView):
             },
             status=status.HTTP_201_CREATED,
         )
+
+
+class InstructeurCoursFichierView(APIView):
+    """Upload (POST) or download (GET) the RTF file attached to a course."""
+    permission_classes = [IsAuthenticated]
+
+    def _get_cours(self, request, cours_id):
+        profile, _ = UserProfile.objects.get_or_create(user=request.user)
+        if profile.role != UserProfile.ROLE_INSTRUCTEUR:
+            return None, Response({"detail": "Forbidden for this role"}, status=status.HTTP_403_FORBIDDEN)
+        cours = Cours.objects.filter(id_cours=cours_id, instructeur=request.user).first()
+        if not cours:
+            return None, Response({"detail": "cours not found"}, status=status.HTTP_404_NOT_FOUND)
+        return cours, None
+
+    def post(self, request, cours_id):
+        cours, err = self._get_cours(request, cours_id)
+        if err:
+            return err
+        fichier_b64 = (request.data.get("fichier_base64") or "").strip()
+        nom_fichier = (request.data.get("nom_fichier") or "document.rtf").strip()
+        mime_type = (request.data.get("mime_type") or "application/rtf").strip()
+        if not fichier_b64:
+            return Response({"detail": "fichier_base64 is required"}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            file_bytes = base64.b64decode(fichier_b64)
+        except Exception:
+            return Response({"detail": "fichier_base64 invalide"}, status=status.HTTP_400_BAD_REQUEST)
+        fichier = CoursFichier.objects.create(
+            cours=cours,
+            nom_fichier=nom_fichier,
+            mime_type=mime_type,
+            taille_octets=len(file_bytes),
+            contenu=file_bytes,
+        )
+        return Response({"fichier_id": fichier.id_cours_fichier, "nom_fichier": nom_fichier}, status=status.HTTP_201_CREATED)
+
+    def get(self, request, cours_id):
+        cours, err = self._get_cours(request, cours_id)
+        if err:
+            return err
+        fichiers = cours.fichiers.order_by("-date_ajout").values("id_cours_fichier", "nom_fichier", "mime_type", "taille_octets", "date_ajout")
+        return Response({"fichiers": list(fichiers)})
+
+
+class InstructeurCoursFichierDownloadView(APIView):
+    """Download the binary content of a specific course file."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, cours_id, fichier_id):
+        profile, _ = UserProfile.objects.get_or_create(user=request.user)
+        if profile.role != UserProfile.ROLE_INSTRUCTEUR:
+            return Response({"detail": "Forbidden for this role"}, status=status.HTTP_403_FORBIDDEN)
+        fichier = CoursFichier.objects.filter(id_cours_fichier=fichier_id, cours__instructeur=request.user, cours_id=cours_id).first()
+        if not fichier:
+            return Response({"detail": "fichier not found"}, status=status.HTTP_404_NOT_FOUND)
+        return Response({
+            "nom_fichier": fichier.nom_fichier,
+            "mime_type": fichier.mime_type,
+            "fichier_base64": base64.b64encode(bytes(fichier.contenu)).decode(),
+        })
+
+
+class InstructeurControleFichierView(APIView):
+    """Upload (POST) or download (GET) the RTF enonce file of a controle."""
+    permission_classes = [IsAuthenticated]
+
+    def _get_controle(self, request, controle_id):
+        profile, _ = UserProfile.objects.get_or_create(user=request.user)
+        if profile.role != UserProfile.ROLE_INSTRUCTEUR:
+            return None, Response({"detail": "Forbidden for this role"}, status=status.HTTP_403_FORBIDDEN)
+        controle = Controle.objects.filter(id_controle=controle_id, instructeur=request.user).first()
+        if not controle:
+            return None, Response({"detail": "controle not found"}, status=status.HTTP_404_NOT_FOUND)
+        return controle, None
+
+    def post(self, request, controle_id):
+        controle, err = self._get_controle(request, controle_id)
+        if err:
+            return err
+        fichier_b64 = (request.data.get("fichier_base64") or "").strip()
+        nom_fichier = (request.data.get("nom_fichier") or "enonce.rtf").strip()
+        mime_type = (request.data.get("mime_type") or "application/rtf").strip()
+        if not fichier_b64:
+            return Response({"detail": "fichier_base64 is required"}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            file_bytes = base64.b64decode(fichier_b64)
+        except Exception:
+            return Response({"detail": "fichier_base64 invalide"}, status=status.HTTP_400_BAD_REQUEST)
+        controle.fichier_enonce = file_bytes
+        controle.nom_fichier_enonce = nom_fichier
+        controle.mime_type_enonce = mime_type
+        controle.save(update_fields=["fichier_enonce", "nom_fichier_enonce", "mime_type_enonce"])
+        return Response({"nom_fichier": nom_fichier}, status=status.HTTP_200_OK)
+
+    def get(self, request, controle_id):
+        controle, err = self._get_controle(request, controle_id)
+        if err:
+            return err
+        if not controle.fichier_enonce:
+            return Response({"detail": "no file attached"}, status=status.HTTP_404_NOT_FOUND)
+        return Response({
+            "nom_fichier": controle.nom_fichier_enonce,
+            "mime_type": controle.mime_type_enonce,
+            "fichier_base64": base64.b64encode(bytes(controle.fichier_enonce)).decode(),
+        })
+
+
+class InstructeurSoumissionFichierView(APIView):
+    """Download the RTF response file a stagiaire attached to their submission."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, soumission_id):
+        profile, _ = UserProfile.objects.get_or_create(user=request.user)
+        if profile.role != UserProfile.ROLE_INSTRUCTEUR:
+            return Response({"detail": "Forbidden for this role"}, status=status.HTTP_403_FORBIDDEN)
+        soumission = SoumissionControle.objects.filter(
+            id_soumission=soumission_id,
+            controle__instructeur=request.user,
+        ).first()
+        if not soumission:
+            return Response({"detail": "soumission not found"}, status=status.HTTP_404_NOT_FOUND)
+        if not soumission.fichier_reponse:
+            return Response({"detail": "no file attached"}, status=status.HTTP_404_NOT_FOUND)
+        return Response({
+            "nom_fichier": soumission.nom_fichier_reponse,
+            "mime_type": soumission.mime_type_reponse,
+            "fichier_base64": base64.b64encode(bytes(soumission.fichier_reponse)).decode(),
+        })
+
+
+class StageaireCoursDetailView(APIView):
+    """Returns full details of a published course for a stagiaire, including fichiers and controls."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, cours_id):
+        profile, _ = UserProfile.objects.get_or_create(user=request.user)
+        if profile.role != UserProfile.ROLE_STAGIAIRE:
+            return Response({"detail": "Forbidden for this role"}, status=status.HTTP_403_FORBIDDEN)
+
+        cours = Cours.objects.filter(id_cours=cours_id, statut=Cours.STATUT_PUBLIE).first()
+        if not cours:
+            return Response({"detail": "cours not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        fichiers = cours.fichiers.order_by("-date_ajout").values(
+            "id_cours_fichier", "nom_fichier", "mime_type", "taille_octets"
+        )
+        controles = Controle.objects.filter(
+            cours=cours, statut=Controle.STATUT_PUBLIE
+        ).order_by("nom")
+
+        return Response({
+            "id": cours.id_cours,
+            "titre": cours.titre,
+            "description": cours.description,
+            "instructeur": cours.instructeur.username,
+            "date_depot": cours.date_depot,
+            "fichiers": list(fichiers),
+            "controles": [
+                {
+                    "id": c.id_controle,
+                    "nom": c.nom,
+                    "enonce": c.enonce,
+                    "bareme": c.bareme,
+                    "date_limite": c.date_limite,
+                    "has_fichier": bool(c.fichier_enonce),
+                    "nom_fichier_enonce": c.nom_fichier_enonce,
+                }
+                for c in controles
+            ],
+        })
+
+
+class StageaireCoursFichierDownloadView(APIView):
+    """Download a course RTF file as a stagiaire."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, cours_id, fichier_id):
+        profile, _ = UserProfile.objects.get_or_create(user=request.user)
+        if profile.role != UserProfile.ROLE_STAGIAIRE:
+            return Response({"detail": "Forbidden for this role"}, status=status.HTTP_403_FORBIDDEN)
+
+        fichier = CoursFichier.objects.filter(
+            id_cours_fichier=fichier_id,
+            cours_id=cours_id,
+            cours__statut=Cours.STATUT_PUBLIE,
+        ).first()
+        if not fichier:
+            return Response({"detail": "fichier not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        return Response({
+            "nom_fichier": fichier.nom_fichier,
+            "mime_type": fichier.mime_type,
+            "fichier_base64": base64.b64encode(bytes(fichier.contenu)).decode(),
+        })
+
+
+class StageaireControleFichierDownloadView(APIView):
+    """Download the RTF enonce file of a control as a stagiaire."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, controle_id):
+        profile, _ = UserProfile.objects.get_or_create(user=request.user)
+        if profile.role != UserProfile.ROLE_STAGIAIRE:
+            return Response({"detail": "Forbidden for this role"}, status=status.HTTP_403_FORBIDDEN)
+
+        controle = Controle.objects.filter(
+            id_controle=controle_id, statut=Controle.STATUT_PUBLIE
+        ).first()
+        if not controle or not controle.fichier_enonce:
+            return Response({"detail": "fichier not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        return Response({
+            "nom_fichier": controle.nom_fichier_enonce,
+            "mime_type": controle.mime_type_enonce,
+            "fichier_base64": base64.b64encode(bytes(controle.fichier_enonce)).decode(),
+        })

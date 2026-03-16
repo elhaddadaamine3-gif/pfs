@@ -25,7 +25,7 @@ void i18n.use(initReactI18next).init({
           dashboard: "Tableau de bord",
           adminWorkspace: "Espace Administration",
           instructorDashboard: "Tableau Instructeur",
-          traineeDashboard: "Tableau Stageaire",
+          traineeDashboard: "Tableau Stagiaire",
           supervisorDashboard: "Tableau Superviseur",
           coordinatorDashboard: "Tableau Coordonnateur",
           adminOverview: "Vue generale",
@@ -40,10 +40,10 @@ void i18n.use(initReactI18next).init({
         workspace: {
           Instructeur: {
             title: "Espace Instructeur",
-            summary: "Suivez les sessions, creez les evaluations et accompagnez la progression des stageaires.",
+            summary: "Suivez les sessions, creez les evaluations et accompagnez la progression des stagiaires.",
           },
-          Stageaire: {
-            title: "Espace Stageaire",
+          Stagiaire: {
+            title: "Espace Stagiaire",
             summary: "Suivez votre parcours, vos jalons et vos prochaines evaluations.",
           },
           Admin: {
@@ -54,7 +54,7 @@ void i18n.use(initReactI18next).init({
             title: "Espace Superviseur",
             summary: "Supervisez les resultats des classes et la qualite de la formation.",
           },
-          Corrdinateur: {
+          Coordinateur: {
             title: "Espace Coordonnateur",
             summary: "Coordonnez la planification et le suivi transverse des activites.",
           },
@@ -71,7 +71,7 @@ void i18n.use(initReactI18next).init({
           badge: "Plateforme de formation entreprise",
           title: "Un espace moderne pour les personnes, les programmes et la progression.",
           subtitle:
-            "Collaboration unifiee entre Instructeurs, Stageaires, Admins, Superviseurs et Corrdinateurs.",
+            "Collaboration unifiee entre Instructeurs, Stagiaires, Admins, Superviseurs et Coordinateurs.",
           ctaLogin: "Acceder a la plateforme",
           ctaSignup: "Creer un compte",
           highlightsTitle: "Points forts de la plateforme",
@@ -130,10 +130,10 @@ void i18n.use(initReactI18next).init({
         },
         roles: {
           Instructeur: "Instructeur",
-          Stageaire: "Stageaire",
+          Stagiaire: "Stagiaire",
           Admin: "Admin",
           Superviseur: "Superviseur",
-          Corrdinateur: "Corrdinateur",
+          Coordinateur: "Coordinateur",
         },
       },
     },
@@ -174,7 +174,7 @@ void i18n.use(initReactI18next).init({
             title: "Instructor Workspace",
             summary: "Track sessions, assign evaluations, and review trainee progression.",
           },
-          Stageaire: {
+          Stagiaire: {
             title: "Trainee Workspace",
             summary: "Follow your assigned program, milestones, and upcoming evaluations.",
           },
@@ -186,7 +186,7 @@ void i18n.use(initReactI18next).init({
             title: "Supervisor Workspace",
             summary: "Monitor team outcomes and ensure delivery quality across cohorts.",
           },
-          Corrdinateur: {
+          Coordinateur: {
             title: "Coordinator Workspace",
             summary: "Coordinate operations, scheduling, and communication across stakeholders.",
           },
@@ -203,7 +203,7 @@ void i18n.use(initReactI18next).init({
           badge: "Enterprise Training Platform",
           title: "A modern workspace for people, programs, and progression.",
           subtitle:
-            "Unified collaboration between Instructeurs, Stageaires, Admins, Superviseurs, and Corrdinateurs.",
+            "Unified collaboration between Instructeurs, Stagiaires, Admins, Superviseurs, and Coordinateurs.",
           ctaLogin: "Access Platform",
           ctaSignup: "Create Account",
           highlightsTitle: "Platform Highlights",
@@ -262,10 +262,10 @@ void i18n.use(initReactI18next).init({
         },
         roles: {
           Instructeur: "Instructeur",
-          Stageaire: "Stageaire",
+          Stagiaire: "Stagiaire",
           Admin: "Admin",
           Superviseur: "Superviseur",
-          Corrdinateur: "Corrdinateur",
+          Coordinateur: "Coordinateur",
         },
       },
     },
