@@ -3,6 +3,7 @@ import csv
 import io
 
 from django.contrib.auth import get_user_model
+from django.core.files.base import ContentFile
 from django.db import IntegrityError
 from django.db import models
 from django.db.models import Q
@@ -16,6 +17,7 @@ from .models import (
     AffectationInstructeurClasse,
     AffectationSujetStage,
     Brigade,
+    Brochure,
     Classe,
     Controle,
     ControleCorrection,
@@ -25,6 +27,8 @@ from .models import (
     Evaluation,
     EventAudit,
     Inscription,
+    Matiere,
+    Module,
     Notification,
     Rank,
     Specialite,
@@ -59,9 +63,9 @@ def validate_profile_requirements(role, matricule, est_civil, corps_id, rank_id,
     requires_military_profile = not (role == UserProfile.ROLE_INSTRUCTEUR and est_civil)
     if requires_military_profile and not matricule:
         return Response({"detail": "matricule is required for military roles"}, status=status.HTTP_400_BAD_REQUEST)
-    if requires_military_profile and (not corps_id or not rank_id or not speciality_id):
+    if requires_military_profile and not corps_id:
         return Response(
-            {"detail": "corps, rank and speciality are required for military roles"},
+            {"detail": "corps is required for military roles"},
             status=status.HTTP_400_BAD_REQUEST,
         )
     return None
@@ -94,6 +98,34 @@ def ensure_reference_manager(profile):
     if profile.role not in {UserProfile.ROLE_ADMIN, UserProfile.ROLE_SUPERVISEUR}:
         return Response({"detail": "Forbidden for this role"}, status=status.HTTP_403_FORBIDDEN)
     return None
+
+
+def notify_stagiaires_new_cours(cours):
+    """Create a notification for every stagiaire when a cours is published."""
+    User = get_user_model()
+    stagiaire_ids = (
+        UserProfile.objects.filter(role=UserProfile.ROLE_STAGIAIRE)
+        .values_list("user_id", flat=True)
+    )
+    matiere_label = cours.matiere.nom if cours.matiere else ""
+    module_label = cours.module.nom if cours.module else ""
+    context = " — ".join(filter(None, [module_label, matiere_label]))
+    titre = f"Nouveau cours : {cours.titre}"
+    message = (
+        f"L'instructeur {cours.instructeur.username} a publié un nouveau cours"
+        + (f" dans {context}" if context else "")
+        + "."
+    )
+    Notification.objects.bulk_create([
+        Notification(
+            destinataire_id=uid,
+            type_notification="nouveau_cours",
+            titre=titre,
+            message=message,
+            lien_cible=f"/cours/{cours.id_cours}",
+        )
+        for uid in stagiaire_ids
+    ])
 
 
 class HealthView(APIView):
@@ -154,8 +186,8 @@ class SignupView(APIView):
         matricule = (request.data.get("matricule") or "").strip()
         est_civil = bool(request.data.get("est_civil", False))
         corps_id = request.data.get("corps_id")
-        rank_id = request.data.get("rank_id")
-        speciality_id = request.data.get("speciality_id")
+        rank_id = None
+        speciality_id = None
 
         if not username or not password:
             return Response(
@@ -313,6 +345,7 @@ class InstructeurDashboardView(APIView):
                         {
                             "id": n.id_notification,
                             "title": n.titre,
+                            "message": n.message,
                             "type": n.type_notification,
                             "created_at": n.date_creation,
                         }
@@ -339,7 +372,7 @@ class StageaireDashboardView(APIView):
         ).select_related("soumission", "soumission__controle")
         unread_notifications = Notification.objects.filter(destinataire=request.user, est_lue=False)
 
-        cours_publies = Cours.objects.filter(statut=Cours.STATUT_PUBLIE).select_related("instructeur__profile")
+        cours_publies = Cours.objects.filter(statut=Cours.STATUT_PUBLIE).select_related("instructeur__profile", "specialite")
 
         sujet_affectation = AffectationSujetStage.objects.filter(stagiaire=request.user).select_related("sujet", "encadrant").first()
 
@@ -378,11 +411,27 @@ class StageaireDashboardView(APIView):
                     {
                         "id": c.id_cours,
                         "titre": c.titre,
+                        "matiere": c.specialite.libelle if c.specialite else c.titre,
                         "description": c.description,
                         "instructeur": c.instructeur.username,
                         "controles_count": c.controles.filter(statut=Controle.STATUT_PUBLIE).count(),
                     }
                     for c in cours_publies.order_by("-date_depot")[:30]
+                ],
+                "modules_list": [
+                    {
+                        "id": m.id_module,
+                        "nom": m.nom,
+                        "matieres": [
+                            {
+                                "id": mat.id_matiere,
+                                "nom": mat.nom,
+                                "cours_count": mat.cours.filter(statut=Cours.STATUT_PUBLIE).count(),
+                            }
+                            for mat in m.matieres.all()
+                        ],
+                    }
+                    for m in Module.objects.prefetch_related("matieres").all()
                 ],
                 "controls": {
                     "available_count": controle_ids.count(),
@@ -421,6 +470,7 @@ class StageaireDashboardView(APIView):
                         {
                             "id": n.id_notification,
                             "title": n.titre,
+                            "message": n.message,
                             "type": n.type_notification,
                             "created_at": n.date_creation,
                         }
@@ -1173,6 +1223,7 @@ class AdminUpdateCourseStatusView(APIView):
         if target_status not in valid_status:
             return Response({"detail": "Invalid status"}, status=status.HTTP_400_BAD_REQUEST)
 
+        was_published = cours.statut == Cours.STATUT_PUBLIE
         cours.statut = target_status
         cours.save(update_fields=["statut"])
         log_event(
@@ -1182,6 +1233,8 @@ class AdminUpdateCourseStatusView(APIView):
             target_id=cours.id_cours,
             message=f"Admin updated cours status to {target_status}",
         )
+        if target_status == Cours.STATUT_PUBLIE and not was_published:
+            notify_stagiaires_new_cours(cours)
         return Response({"id": cours.id_cours, "status": cours.statut})
 
 
@@ -1383,6 +1436,8 @@ class InstructeurCoursCreateView(APIView):
         titre = (request.data.get("titre") or "").strip()
         description = (request.data.get("description") or "").strip()
         specialite_id = request.data.get("specialite_id")
+        module_id = request.data.get("module_id")
+        matiere_id = request.data.get("matiere_id")
         publier = bool(request.data.get("publier", False))
 
         if not titre:
@@ -1394,11 +1449,28 @@ class InstructeurCoursCreateView(APIView):
             if not specialite:
                 return Response({"detail": "specialite not found"}, status=status.HTTP_400_BAD_REQUEST)
 
+        module = None
+        if module_id:
+            module = Module.objects.filter(id_module=module_id).first()
+            if not module:
+                return Response({"detail": "module not found"}, status=status.HTTP_400_BAD_REQUEST)
+
+        matiere = None
+        if matiere_id:
+            matiere = Matiere.objects.filter(id_matiere=matiere_id).first()
+            if not matiere:
+                return Response({"detail": "matiere not found"}, status=status.HTTP_400_BAD_REQUEST)
+            # auto-set module from matiere
+            if not module and matiere.module:
+                module = matiere.module
+
         cours = Cours.objects.create(
             titre=titre,
             description=description,
             instructeur=request.user,
             specialite=specialite,
+            module=module,
+            matiere=matiere,
             statut=Cours.STATUT_PUBLIE if publier else Cours.STATUT_BROUILLON,
             date_depot=timezone.now().date(),
         )
@@ -1410,6 +1482,8 @@ class InstructeurCoursCreateView(APIView):
             message=f"Instructeur created cours {cours.titre}",
             metadata={"status": cours.statut},
         )
+        if cours.statut == Cours.STATUT_PUBLIE:
+            notify_stagiaires_new_cours(cours)
         return Response(
             {"id": cours.id_cours, "titre": cours.titre, "statut": cours.statut},
             status=status.HTTP_201_CREATED,
@@ -1644,13 +1718,13 @@ class InstructeurCoursFichierView(APIView):
             file_bytes = base64.b64decode(fichier_b64)
         except Exception:
             return Response({"detail": "fichier_base64 invalide"}, status=status.HTTP_400_BAD_REQUEST)
-        fichier = CoursFichier.objects.create(
+        fichier = CoursFichier(
             cours=cours,
             nom_fichier=nom_fichier,
             mime_type=mime_type,
             taille_octets=len(file_bytes),
-            contenu=file_bytes,
         )
+        fichier.fichier.save(nom_fichier, ContentFile(file_bytes), save=True)
         return Response({"fichier_id": fichier.id_cours_fichier, "nom_fichier": nom_fichier}, status=status.HTTP_201_CREATED)
 
     def get(self, request, cours_id):
@@ -1670,12 +1744,14 @@ class InstructeurCoursFichierDownloadView(APIView):
         if profile.role != UserProfile.ROLE_INSTRUCTEUR:
             return Response({"detail": "Forbidden for this role"}, status=status.HTTP_403_FORBIDDEN)
         fichier = CoursFichier.objects.filter(id_cours_fichier=fichier_id, cours__instructeur=request.user, cours_id=cours_id).first()
-        if not fichier:
+        if not fichier or not fichier.fichier:
             return Response({"detail": "fichier not found"}, status=status.HTTP_404_NOT_FOUND)
+        with fichier.fichier.open("rb") as fh:
+            content = fh.read()
         return Response({
             "nom_fichier": fichier.nom_fichier,
             "mime_type": fichier.mime_type,
-            "fichier_base64": base64.b64encode(bytes(fichier.contenu)).decode(),
+            "fichier_base64": base64.b64encode(content).decode(),
         })
 
 
@@ -1756,7 +1832,7 @@ class StageaireCoursDetailView(APIView):
         if profile.role != UserProfile.ROLE_STAGIAIRE:
             return Response({"detail": "Forbidden for this role"}, status=status.HTTP_403_FORBIDDEN)
 
-        cours = Cours.objects.filter(id_cours=cours_id, statut=Cours.STATUT_PUBLIE).first()
+        cours = Cours.objects.filter(id_cours=cours_id, statut=Cours.STATUT_PUBLIE).select_related("instructeur", "specialite").first()
         if not cours:
             return Response({"detail": "cours not found"}, status=status.HTTP_404_NOT_FOUND)
 
@@ -1770,6 +1846,7 @@ class StageaireCoursDetailView(APIView):
         return Response({
             "id": cours.id_cours,
             "titre": cours.titre,
+            "matiere": cours.specialite.libelle if cours.specialite else cours.titre,
             "description": cours.description,
             "instructeur": cours.instructeur.username,
             "date_depot": cours.date_depot,
@@ -1803,14 +1880,146 @@ class StageaireCoursFichierDownloadView(APIView):
             cours_id=cours_id,
             cours__statut=Cours.STATUT_PUBLIE,
         ).first()
-        if not fichier:
+        if not fichier or not fichier.fichier:
             return Response({"detail": "fichier not found"}, status=status.HTTP_404_NOT_FOUND)
 
+        with fichier.fichier.open("rb") as fh:
+            content = fh.read()
         return Response({
             "nom_fichier": fichier.nom_fichier,
             "mime_type": fichier.mime_type,
-            "fichier_base64": base64.b64encode(bytes(fichier.contenu)).decode(),
+            "fichier_base64": base64.b64encode(content).decode(),
         })
+
+
+class ModulesListView(APIView):
+    """Returns list of all modules with their matieres (any authenticated role)."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        modules = Module.objects.prefetch_related("matieres").all()
+        return Response([
+            {
+                "id": m.id_module,
+                "nom": m.nom,
+                "matieres": [
+                    {
+                        "id": mat.id_matiere,
+                        "nom": mat.nom,
+                        "cours_count": mat.cours.filter(statut=Cours.STATUT_PUBLIE).count(),
+                    }
+                    for mat in m.matieres.all()
+                ],
+            }
+            for m in modules
+        ])
+
+
+# Alias for backward compat with stagiaire-specific URL
+StageaireModulesListView = ModulesListView
+
+
+class StageaireModuleMatieresView(APIView):
+    """Returns matieres within a module."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, module_id):
+        module = Module.objects.filter(id_module=module_id).prefetch_related("matieres").first()
+        if not module:
+            return Response({"detail": "module not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        return Response({
+            "module_id": module.id_module,
+            "module_nom": module.nom,
+            "matieres": [
+                {
+                    "id": mat.id_matiere,
+                    "nom": mat.nom,
+                    "cours_count": mat.cours.filter(statut=Cours.STATUT_PUBLIE).count(),
+                }
+                for mat in module.matieres.all()
+            ],
+        })
+
+
+class StageaireMatiereCoursListView(APIView):
+    """Returns published courses and brochures within a matiere."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, matiere_id):
+        matiere = Matiere.objects.select_related("module").prefetch_related("brochures").filter(id_matiere=matiere_id).first()
+        if not matiere:
+            return Response({"detail": "matiere not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        brochures = list(matiere.brochures.all())
+        cours_list = Cours.objects.filter(
+            matiere=matiere, statut=Cours.STATUT_PUBLIE
+        ).select_related("instructeur").order_by("-date_depot")[:30]
+
+        return Response({
+            "matiere_id": matiere.id_matiere,
+            "matiere_nom": matiere.nom,
+            "module_id": matiere.module.id_module,
+            "module_nom": matiere.module.nom,
+            "brochures": [
+                {
+                    "id": b.id_brochure,
+                    "nom": b.nom,
+                    "cours_count": b.cours.filter(statut=Cours.STATUT_PUBLIE).count(),
+                }
+                for b in brochures
+            ],
+            "cours": [
+                {
+                    "id": c.id_cours,
+                    "titre": c.titre,
+                    "description": c.description,
+                    "instructeur": c.instructeur.username,
+                    "controles_count": c.controles.filter(statut=Controle.STATUT_PUBLIE).count(),
+                }
+                for c in cours_list
+            ],
+        })
+
+
+class StageaireBrochureCoursListView(APIView):
+    """Returns published courses within a brochure."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, brochure_id):
+        brochure = Brochure.objects.select_related("matiere__module").filter(id_brochure=brochure_id).first()
+        if not brochure:
+            return Response({"detail": "brochure not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        cours_list = Cours.objects.filter(
+            brochure=brochure, statut=Cours.STATUT_PUBLIE
+        ).select_related("instructeur").order_by("-date_depot")[:30]
+
+        return Response({
+            "brochure_id": brochure.id_brochure,
+            "brochure_nom": brochure.nom,
+            "matiere_id": brochure.matiere.id_matiere,
+            "matiere_nom": brochure.matiere.nom,
+            "module_nom": brochure.matiere.module.nom,
+            "cours": [
+                {
+                    "id": c.id_cours,
+                    "titre": c.titre,
+                    "description": c.description,
+                    "instructeur": c.instructeur.username,
+                    "controles_count": c.controles.filter(statut=Controle.STATUT_PUBLIE).count(),
+                }
+                for c in cours_list
+            ],
+        })
+
+
+class StageaireModuleCoursListView(APIView):
+    """Returns matieres within a module (kept for backward compat)."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, module_id):
+        return StageaireModuleMatieresView().get(request, module_id)
 
 
 class StageaireControleFichierDownloadView(APIView):

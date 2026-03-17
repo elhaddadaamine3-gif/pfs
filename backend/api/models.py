@@ -147,6 +147,44 @@ class AffectationInstructeurClasse(models.Model):
         ]
 
 
+class Module(models.Model):
+    id_module = models.CharField(max_length=50, primary_key=True, default=generate_id, editable=False)
+    nom = models.CharField(max_length=255)
+    ordre = models.IntegerField(default=0)
+
+    class Meta:
+        ordering = ["ordre", "nom"]
+
+    def __str__(self):
+        return self.nom
+
+
+class Matiere(models.Model):
+    id_matiere = models.CharField(max_length=50, primary_key=True, default=generate_id, editable=False)
+    nom = models.CharField(max_length=255)
+    module = models.ForeignKey(Module, on_delete=models.CASCADE, related_name="matieres")
+    ordre = models.IntegerField(default=0)
+
+    class Meta:
+        ordering = ["ordre", "nom"]
+
+    def __str__(self):
+        return self.nom
+
+
+class Brochure(models.Model):
+    id_brochure = models.CharField(max_length=50, primary_key=True, default=generate_id, editable=False)
+    nom = models.CharField(max_length=255)
+    matiere = models.ForeignKey(Matiere, on_delete=models.CASCADE, related_name="brochures")
+    ordre = models.IntegerField(default=0)
+
+    class Meta:
+        ordering = ["ordre", "nom"]
+
+    def __str__(self):
+        return self.nom
+
+
 class Cours(models.Model):
     STATUT_BROUILLON = "BROUILLON"
     STATUT_PUBLIE = "PUBLIE"
@@ -170,6 +208,27 @@ class Cours(models.Model):
         related_name="cours",
     )
     statut = models.CharField(max_length=30, choices=STATUT_CHOICES, default=STATUT_BROUILLON)
+    matiere = models.ForeignKey(
+        "Matiere",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="cours",
+    )
+    module = models.ForeignKey(
+        Module,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="cours",
+    )
+    brochure = models.ForeignKey(
+        "Brochure",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="cours",
+    )
 
 
 class CoursFichier(models.Model):
@@ -178,7 +237,7 @@ class CoursFichier(models.Model):
     nom_fichier = models.CharField(max_length=255)
     mime_type = models.CharField(max_length=100)
     taille_octets = models.BigIntegerField(default=0)
-    contenu = models.BinaryField()
+    fichier = models.FileField(upload_to="cours_fichiers/", blank=True, null=True)
     date_ajout = models.DateTimeField(default=timezone.now)
 
 

@@ -41,20 +41,21 @@ type InstructeurDashboardData = {
   controles_list: Array<{ id: string; name: string; status: string; cours_title: string; deadline: string | null }>;
   pending_submissions: Array<{ soumission_id: string; controle_id: string; controle_name: string; stagiaire_id: number; submitted_at: string }>;
   sujets_fin_stage: { total: number; active: number; list: Array<{ sujet: string; stagiaire_id: number; etat: string }> };
-  notifications: { unread_count: number; latest: Array<{ id: string; title: string; type: string; created_at: string }> };
+  notifications: { unread_count: number; latest: Array<{ id: string; title: string; message: string; type: string; created_at: string }> };
 };
 
 type StageaireDashboardData = {
   role: Role;
   classes: Array<{ classe_code: string; classe_label: string; brigade_code: string; brigade_label: string }>;
-  cours_list: Array<{ id: string; titre: string; description: string; instructeur: string; controles_count: number }>;
+  cours_list: Array<{ id: string; titre: string; matiere: string; description: string; instructeur: string; controles_count: number }>;
+  modules_list: Array<{ id: string; nom: string; matieres: Array<{ id: string; nom: string; cours_count: number }> }>;
   controls: { available_count: number; submitted_count: number; pending_count: number };
   controls_list: Array<{ id: string; name: string; deadline: string | null; cours: string }>;
   submitted_control_ids: string[];
   soumissions_detail: Array<{ soumission_id: string; controle_id: string; controle_name: string; statut: string; submitted_at: string; has_fichier: boolean; note: string | null; correction_publiee: string | null; correction_titre: string | null }>;
   notes: Array<{ controle: string; note: string; published_at: string | null }>;
   sujet_fin_stage: { titre: string; description: string; etat: string; encadrant: string; date_affectation: string } | null;
-  notifications: { unread_count: number; latest: Array<{ id: string; title: string; type: string; created_at: string }> };
+  notifications: { unread_count: number; latest: Array<{ id: string; title: string; message: string; type: string; created_at: string }> };
 };
 
 type SuperviseurDashboardData = {
@@ -557,11 +558,9 @@ function SignupPage({
     matricule: string;
     est_civil: boolean;
     corps_id: string;
-    rank_id: string;
-    speciality_id: string;
   }) => Promise<void>;
   error: string | null;
-  references: { corps: ReferenceCorp[]; ranks: ReferenceRank[]; specialities: ReferenceSpeciality[] };
+  references: { corps: ReferenceCorp[] };
 }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -572,22 +571,16 @@ function SignupPage({
   const [matricule, setMatricule] = useState("");
   const [estCivil, setEstCivil] = useState(false);
   const [corpsId, setCorpsId] = useState("");
-  const [rankId, setRankId] = useState("");
-  const [specialityId, setSpecialityId] = useState("");
   const [busy, setBusy] = useState(false);
   const requiresMilitaryProfile = !(role === "Instructeur" && estCivil);
   const matriculeRequired = requiresMilitaryProfile;
-  const ranksForCorps = references.ranks.filter((rank) => rank.corps_id === corpsId);
-  const specialitiesForCorps = references.specialities.filter(
-    (speciality) => !speciality.corps_id || speciality.corps_id === corpsId
-  );
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (matriculeRequired && !matricule.trim()) {
       return;
     }
-    if (requiresMilitaryProfile && (!corpsId || !rankId || !specialityId)) {
+    if (requiresMilitaryProfile && !corpsId) {
       return;
     }
     setBusy(true);
@@ -600,8 +593,6 @@ function SignupPage({
         matricule: matricule.trim(),
         est_civil: role === "Instructeur" ? estCivil : false,
         corps_id: requiresMilitaryProfile ? corpsId : "",
-        rank_id: requiresMilitaryProfile ? rankId : "",
-        speciality_id: requiresMilitaryProfile ? specialityId : "",
       });
       navigate("/dashboard");
     } finally {
@@ -651,60 +642,22 @@ function SignupPage({
             </label>
           ) : null}
           {requiresMilitaryProfile ? (
-            <>
-              <label className="grid gap-1 text-sm font-medium text-app-dark">
-                Corp
-                <select
-                  className="rounded-md border border-app-muted bg-white px-3 py-2 outline-none focus:border-app-accent"
-                  onChange={(event) => {
-                    setCorpsId(event.target.value);
-                    setRankId("");
-                    setSpecialityId("");
-                  }}
-                  required
-                  value={corpsId}
-                >
-                  <option value="">Selectionner</option>
-                  {references.corps.map((corp) => (
-                    <option key={corp.id} value={corp.id}>
-                      {corp.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="grid gap-1 text-sm font-medium text-app-dark">
-                Rank
-                <select
-                  className="rounded-md border border-app-muted bg-white px-3 py-2 outline-none focus:border-app-accent"
-                  onChange={(event) => setRankId(event.target.value)}
-                  required
-                  value={rankId}
-                >
-                  <option value="">Selectionner</option>
-                  {ranksForCorps.map((rank) => (
-                    <option key={rank.id} value={rank.id}>
-                      {rank.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="grid gap-1 text-sm font-medium text-app-dark">
-                Speciality
-                <select
-                  className="rounded-md border border-app-muted bg-white px-3 py-2 outline-none focus:border-app-accent"
-                  onChange={(event) => setSpecialityId(event.target.value)}
-                  required
-                  value={specialityId}
-                >
-                  <option value="">Selectionner</option>
-                  {specialitiesForCorps.map((speciality) => (
-                    <option key={speciality.id} value={speciality.id}>
-                      {speciality.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </>
+            <label className="grid gap-1 text-sm font-medium text-app-dark">
+              Corps
+              <select
+                className="rounded-md border border-app-muted bg-white px-3 py-2 outline-none focus:border-app-accent"
+                onChange={(event) => setCorpsId(event.target.value)}
+                required
+                value={corpsId}
+              >
+                <option value="">Sélectionner</option>
+                {references.corps.map((corp) => (
+                  <option key={corp.id} value={corp.id}>
+                    {corp.label}
+                  </option>
+                ))}
+              </select>
+            </label>
           ) : null}
           <button
             className="w-full rounded-md bg-app-dark px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
@@ -737,17 +690,24 @@ function DashboardPage({
   const [instructeurData, setInstructeurData] = useState<InstructeurDashboardData | null>(null);
   const [stageaireData, setStageaireData] = useState<StageaireDashboardData | null>(null);
   const [selectedCours, setSelectedCours] = useState<{
-    id: string; titre: string; description: string; instructeur: string; date_depot: string;
+    id: string; titre: string; matiere: string; description: string; instructeur: string; date_depot: string;
     fichiers: Array<{ id_cours_fichier: string; nom_fichier: string; mime_type: string; taille_octets: number }>;
     controles: Array<{ id: string; nom: string; enonce: string; bareme: number; date_limite: string | null; has_fichier: boolean; nom_fichier_enonce: string }>;
   } | null>(null);
   const [coursFileCache, setCoursFileCache] = useState<Record<string, { base64: string; name: string; mimeType: string }>>({});
+  const [selectedModule, setSelectedModule] = useState<{ id: string; nom: string; matieres: Array<{ id: string; nom: string; cours_count: number }> } | null>(null);
+  const [selectedMatiere, setSelectedMatiere] = useState<{ id: string; nom: string; module_nom: string; brochures: Array<{ id: string; nom: string; cours_count: number }>; cours: Array<{ id: string; titre: string; description: string; instructeur: string; controles_count: number }> } | null>(null);
+  const [selectedBrochure, setSelectedBrochure] = useState<{ id: string; nom: string; matiere_nom: string; module_nom: string; cours: Array<{ id: string; titre: string; description: string; instructeur: string; controles_count: number }> } | null>(null);
+  const [modulesExpanded, setModulesExpanded] = useState(false);
   const [superviseurData, setSuperviseurData] = useState<SuperviseurDashboardData | null>(null);
   const [coordinateurData, setCoordinateurData] = useState<CoordinateurDashboardData | null>(null);
   const [adminData, setAdminData] = useState<AdminDashboardData | null>(null);
 
+  const [modulesList, setModulesList] = useState<Array<{ id: string; nom: string; matieres: Array<{ id: string; nom: string }> }>>([]);
   const [courseTitle, setCourseTitle] = useState("");
   const [courseDescription, setCourseDescription] = useState("");
+  const [courseModuleId, setCourseModuleId] = useState("");
+  const [courseMatiereId, setCourseMatiereId] = useState("");
   const [courseFichierFile, setCourseFichierFile] = useState<File | null>(null);
   const [controlCoursId, setControlCoursId] = useState("");
   const [controlName, setControlName] = useState("");
@@ -848,11 +808,15 @@ function DashboardPage({
     }
     try {
       if (user.role === "Instructeur") {
-        const response = await apiFetch("/api/dashboard/instructeur/");
+        const [response, modResp] = await Promise.all([
+          apiFetch("/api/dashboard/instructeur/"),
+          apiFetch("/api/modules/"),
+        ]);
         if (response.status === 403) { onSessionInvalid(); return; }
         if (!response.ok) throw new Error("failed");
         const data: InstructeurDashboardData = await response.json();
         setInstructeurData(data);
+        if (modResp.ok) { const mods = await modResp.json(); setModulesList(mods); }
       } else if (user.role === "Stagiaire") {
         const response = await apiFetch("/api/dashboard/stageaire/");
         if (response.status === 403) { onSessionInvalid(); return; }
@@ -895,7 +859,7 @@ function DashboardPage({
     const response = await apiFetch("/api/instructeur/cours/", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ titre: courseTitle, description: courseDescription, publier: true }),
+      body: JSON.stringify({ titre: courseTitle, description: courseDescription, module_id: courseModuleId || undefined, matiere_id: courseMatiereId || undefined, publier: true }),
     });
     if (!response.ok) return;
     const created: { id: string } = await response.json();
@@ -977,6 +941,33 @@ function DashboardPage({
     }
   };
 
+  const handleOpenModule = (module: { id: string; nom: string; matieres: Array<{ id: string; nom: string; cours_count: number }> }) => {
+    setSelectedMatiere(null);
+    setSelectedBrochure(null);
+    setSelectedCours(null);
+    setCoursFileCache({});
+    setSelectedModule(module);
+  };
+
+  const handleOpenMatiere = async (matiereId: string) => {
+    setSelectedBrochure(null);
+    setSelectedCours(null);
+    setCoursFileCache({});
+    const response = await apiFetch(`/api/stageaire/matieres/${matiereId}/cours/`);
+    if (!response.ok) return;
+    const data = await response.json();
+    setSelectedMatiere({ id: data.matiere_id, nom: data.matiere_nom, module_nom: data.module_nom, brochures: data.brochures ?? [], cours: data.cours });
+  };
+
+  const handleOpenBrochure = async (brochureId: string) => {
+    setSelectedCours(null);
+    setCoursFileCache({});
+    const response = await apiFetch(`/api/stageaire/brochures/${brochureId}/cours/`);
+    if (!response.ok) return;
+    const data = await response.json();
+    setSelectedBrochure({ id: data.brochure_id, nom: data.brochure_nom, matiere_nom: data.matiere_nom, module_nom: data.module_nom, cours: data.cours });
+  };
+
   const handleOpenCours = async (coursId: string) => {
     const response = await apiFetch(`/api/stageaire/cours/${coursId}/`);
     if (!response.ok) return;
@@ -1012,8 +1003,9 @@ function DashboardPage({
     if (response.ok) {
       setSubmissionFiles((prev) => { const next = { ...prev }; delete next[controlId]; return next; });
       const ctrl = stageaireData?.controls_list.find((c) => c.id === controlId);
+      const ctrlName = ctrl?.name ?? stageaireData?.soumissions_detail.find((s) => s.controle_id === controlId)?.controle_name ?? controlId.slice(0, 8);
       const withFile = file ? ` avec fichier « ${file.name} »` : "";
-      setActionMessage(`Réponse soumise pour « ${ctrl?.name ?? controlId.slice(0, 8)} »${withFile}.`);
+      setActionMessage(`Réponse soumise pour « ${ctrlName} »${withFile}.`);
       await loadDashboard();
     }
   };
@@ -1472,6 +1464,42 @@ function DashboardPage({
           {/* Dashboard */}
           {instructeurView === "dashboard" ? (
             <>
+              {/* Connexion card */}
+              <article className="rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
+                <div className="flex items-center gap-4">
+                  <div
+                    className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full text-xl font-bold text-white"
+                    style={{ background: "#25343F" }}
+                  >
+                    {user?.username?.[0]?.toUpperCase() ?? "?"}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-lg font-semibold truncate">{user?.username}</p>
+                    <p className="text-sm text-app-dark/60">{user?.role}</p>
+                  </div>
+                  <span
+                    className="shrink-0 rounded-full px-3 py-1 text-xs font-semibold text-white"
+                    style={{ background: "#22c55e" }}
+                  >
+                    Connecté
+                  </span>
+                </div>
+                <div className="mt-4 grid gap-2 md:grid-cols-3 border-t border-app-muted/60 pt-4">
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-app-dark/50">Matricule</p>
+                    <p className="mt-0.5 text-sm font-semibold">{user?.matricule || "—"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-app-dark/50">Corps</p>
+                    <p className="mt-0.5 text-sm font-semibold">{user?.corps?.label ?? (user?.est_civil ? "Civil" : "—")}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-app-dark/50">Email</p>
+                    <p className="mt-0.5 text-sm font-semibold truncate">{user?.email || "—"}</p>
+                  </div>
+                </div>
+              </article>
+
               <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
                 <h3 className="text-lg font-semibold">Affectations et activité</h3>
                 <div className="mt-3 grid gap-2 md:grid-cols-3">
@@ -1507,6 +1535,33 @@ function DashboardPage({
                 <form className="mt-3 grid gap-3 md:grid-cols-2" onSubmit={handleCreateCourse}>
                   <Input label="Titre" value={courseTitle} onChange={setCourseTitle} />
                   <Input label="Description" value={courseDescription} onChange={setCourseDescription} />
+                  <label className="grid gap-1 text-sm">
+                    Module
+                    <select
+                      className="rounded border border-app-muted bg-white px-3 py-2 text-sm"
+                      value={courseModuleId}
+                      onChange={(e) => { setCourseModuleId(e.target.value); setCourseMatiereId(""); }}
+                    >
+                      <option value="">— Sélectionner un module —</option>
+                      {modulesList.map((m) => (
+                        <option key={m.id} value={m.id}>{m.nom}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="grid gap-1 text-sm">
+                    Matière
+                    <select
+                      className="rounded border border-app-muted bg-white px-3 py-2 text-sm"
+                      value={courseMatiereId}
+                      onChange={(e) => setCourseMatiereId(e.target.value)}
+                      disabled={!courseModuleId}
+                    >
+                      <option value="">— Sélectionner une matière —</option>
+                      {(modulesList.find((m) => m.id === courseModuleId)?.matieres ?? []).map((mat) => (
+                        <option key={mat.id} value={mat.id}>{mat.nom}</option>
+                      ))}
+                    </select>
+                  </label>
                   <label className="grid gap-1 text-sm md:col-span-2">
                     Fichier RTF (optionnel)
                     <input
@@ -1721,10 +1776,69 @@ function DashboardPage({
             {/* Nav items */}
             <nav className="flex-1 px-2 py-3 space-y-1">
               {(["dashboard", "cours", "controles", "reponse_controle", "sujet"] as const).map((tab) => {
-                const labels: Record<string, string> = { dashboard: "Tableau de bord", cours: "Cours", controles: "Contrôles", reponse_controle: "Réponse contrôle", sujet: "Sujet fin de stage" };
+                if (tab === "cours") {
+                  const isCoursActive = stageaireView === "cours";
+                  return (
+                    <div key="cours">
+                      {/* Modules collapsible header */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setModulesExpanded((prev) => !prev);
+                          setStageaireView("cours");
+                          setSelectedMatiere(null);
+                          setSelectedBrochure(null);
+                          setSelectedCours(null);
+                          setCoursFileCache({});
+                        }}
+                        className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition text-left"
+                        style={{ background: isCoursActive ? "#25343F" : "transparent", color: isCoursActive ? "white" : "#25343F" }}
+                      >
+                        <span className="flex-1 truncate">Modules</span>
+                        <svg
+                          className="h-3.5 w-3.5 shrink-0 transition-transform"
+                          style={{ transform: modulesExpanded ? "rotate(90deg)" : "rotate(0deg)" }}
+                          fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                        </svg>
+                      </button>
+                      {/* Expanded module sub-items */}
+                      {modulesExpanded && (
+                        <div className="mt-1 ml-2 space-y-0.5 border-l-2 border-app-muted pl-2">
+                          {(stageaireData.modules_list ?? []).map((m) => {
+                            const isModActive = isCoursActive && selectedModule?.id === m.id;
+                            return (
+                              <button
+                                key={m.id}
+                                type="button"
+                                onClick={() => { setStageaireView("cours"); handleOpenModule(m); }}
+                                className="w-full flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs font-medium transition text-left"
+                                style={{ background: isModActive ? "#25343F" : "transparent", color: isModActive ? "white" : "#25343F" }}
+                                title={m.nom}
+                              >
+                                <span className="flex-1 truncate">{m.nom}</span>
+                                <span
+                                  className="shrink-0 rounded-full px-1.5 text-xs font-bold leading-none py-0.5"
+                                  style={{ background: isModActive ? "rgba(255,255,255,0.2)" : "#e5e7eb", color: isModActive ? "white" : "#374151" }}
+                                >
+                                  {m.matieres.length}
+                                </span>
+                              </button>
+                            );
+                          })}
+                          {(stageaireData.modules_list ?? []).length === 0 && (
+                            <p className="px-2 py-1 text-xs text-app-dark/40">Aucun module</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+
+                const labels: Record<string, string> = { dashboard: "Tableau de bord", controles: "Contrôles", reponse_controle: "Réponse contrôle", sujet: "Sujet fin de stage" };
                 const badge = tab === "controles" && stageaireData.controls.pending_count > 0
                   ? stageaireData.controls.pending_count
-                  : tab === "cours" ? (stageaireData.cours_list ?? []).length
                   : tab === "reponse_controle" ? (stageaireData.soumissions_detail ?? []).length
                   : 0;
                 const active = stageaireView === tab;
@@ -1732,13 +1846,9 @@ function DashboardPage({
                   <button
                     key={tab}
                     type="button"
-                    onClick={() => setStageaireView(tab)}
+                    onClick={() => { setStageaireView(tab); setSelectedModule(null); setSelectedMatiere(null); setSelectedBrochure(null); setSelectedCours(null); setCoursFileCache({}); }}
                     className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition text-left"
-                    style={{
-                      background: active ? "#25343F" : "transparent",
-                      color: active ? "white" : "#25343F",
-                      border: active ? "none" : "none",
-                    }}
+                    style={{ background: active ? "#25343F" : "transparent", color: active ? "white" : "#25343F" }}
                   >
                     <span className="flex-1 truncate">{labels[tab]}</span>
                     {badge > 0 ? (
@@ -1782,6 +1892,42 @@ function DashboardPage({
             {/* Dashboard */}
             {stageaireView === "dashboard" ? (
               <>
+                {/* Connexion card */}
+                <article className="rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
+                  <div className="flex items-center gap-4">
+                    <div
+                      className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full text-xl font-bold text-white"
+                      style={{ background: "#25343F" }}
+                    >
+                      {user?.username?.[0]?.toUpperCase() ?? "?"}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-lg font-semibold truncate">{user?.username}</p>
+                      <p className="text-sm text-app-dark/60">{user?.role}</p>
+                    </div>
+                    <span
+                      className="shrink-0 rounded-full px-3 py-1 text-xs font-semibold text-white"
+                      style={{ background: "#22c55e" }}
+                    >
+                      Connecté
+                    </span>
+                  </div>
+                  <div className="mt-4 grid gap-2 md:grid-cols-3 border-t border-app-muted/60 pt-4">
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-app-dark/50">Matricule</p>
+                      <p className="mt-0.5 text-sm font-semibold">{user?.matricule || "—"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-app-dark/50">Corps</p>
+                      <p className="mt-0.5 text-sm font-semibold">{user?.corps?.label ?? (user?.est_civil ? "Civil" : "—")}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-app-dark/50">Email</p>
+                      <p className="mt-0.5 text-sm font-semibold truncate">{user?.email || "—"}</p>
+                    </div>
+                  </div>
+                </article>
+
                 <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
                   <h3 className="text-lg font-semibold">Vue d'ensemble</h3>
                   <div className="mt-3 grid gap-2 md:grid-cols-3">
@@ -1818,40 +1964,195 @@ function DashboardPage({
                       </div>
                     </div>
                   )}
-                  <p className="mt-4 text-sm text-app-dark/60">Notifications non lues: <span className="font-semibold text-app-dark">{stageaireData.notifications.unread_count}</span></p>
-                  {stageaireData.notifications.latest.length > 0 && (
-                    <div className="mt-2 space-y-1">
-                      {stageaireData.notifications.latest.map((n) => (
-                        <p className="text-xs text-app-dark/60" key={n.id}>[{n.type}] {n.title}</p>
-                      ))}
+                  {stageaireData.notifications.unread_count > 0 && (
+                    <div className="mt-4">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-app-dark/50">
+                        Notifications ({stageaireData.notifications.unread_count} non lues)
+                      </p>
+                      <div className="mt-2 space-y-2">
+                        {stageaireData.notifications.latest.map((n) => (
+                          <div key={n.id} className="flex gap-3 rounded-xl border border-app-muted bg-app-soft p-3">
+                            <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-app-accent/15 text-app-accent">
+                              {n.type === "nouveau_cours" ? (
+                                <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
+                              ) : (
+                                <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
+                              )}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-xs font-semibold text-app-dark">{n.title}</p>
+                              {n.message && <p className="mt-0.5 text-xs text-app-dark/60">{n.message}</p>}
+                              <p className="mt-1 text-xs text-app-dark/40">{new Date(n.created_at).toLocaleDateString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </article>
               </>
             ) : null}
 
-            {/* Cours — list */}
-            {stageaireView === "cours" && !selectedCours ? (
+            {/* Cours — no module selected yet */}
+            {stageaireView === "cours" && !selectedModule && !selectedMatiere && !selectedCours ? (
               <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
-                <h3 className="text-lg font-semibold">Cours disponibles</h3>
-                <div className="mt-3 space-y-2">
-                  {(stageaireData.cours_list ?? []).map((c) => (
-                    <div
-                      className="cursor-pointer rounded-xl border border-app-muted p-4 transition-colors hover:border-app-dark/40 hover:bg-app-soft"
-                      key={c.id}
-                      onClick={() => void handleOpenCours(c.id)}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="text-sm font-semibold">{c.titre}</p>
-                        <span className="text-xs text-app-dark/40">→</span>
-                      </div>
-                      {c.description ? <p className="mt-1 text-xs text-app-dark/60">{c.description}</p> : null}
-                      <p className="mt-1 text-xs text-app-dark/50">Instructeur: {c.instructeur} &mdash; {c.controles_count} contrôle(s)</p>
-                    </div>
-                  ))}
-                  {(stageaireData.cours_list ?? []).length === 0 ? <EmptyState message="Aucun cours publié pour le moment." /> : null}
+                <div className="flex flex-col items-center gap-3 py-8 text-center">
+                  <svg className="h-10 w-10 text-app-dark/20" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                  </svg>
+                  <div>
+                    <p className="text-sm font-semibold text-app-dark/60">Sélectionnez un module</p>
+                    <p className="mt-1 text-xs text-app-dark/40">{(stageaireData.modules_list ?? []).length} module{(stageaireData.modules_list ?? []).length !== 1 ? "s" : ""} disponible{(stageaireData.modules_list ?? []).length !== 1 ? "s" : ""} dans le menu</p>
+                  </div>
                 </div>
               </article>
+            ) : null}
+
+            {/* Cours — matière list within a module */}
+            {stageaireView === "cours" && selectedModule && !selectedMatiere && !selectedCours ? (
+              <>
+                <div className="flex items-center gap-2 px-1">
+                  <svg className="h-4 w-4 shrink-0 text-app-dark/40" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                  </svg>
+                  <h3 className="text-base font-semibold truncate text-app-dark">{selectedModule.nom}</h3>
+                </div>
+
+                <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
+                  <h3 className="text-lg font-semibold">Matières</h3>
+                  <div className="mt-4 grid gap-3 md:grid-cols-2">
+                    {selectedModule.matieres.map((mat) => (
+                      <div
+                        className="cursor-pointer rounded-xl border border-app-muted bg-app-soft/50 p-4 transition-all hover:border-app-dark/40 hover:bg-app-soft hover:shadow-sm"
+                        key={mat.id}
+                        onClick={() => void handleOpenMatiere(mat.id)}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="text-sm font-semibold leading-snug">{mat.nom}</p>
+                          <span
+                            className="mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold text-white"
+                            style={{ background: mat.cours_count > 0 ? "#25343F" : "#aaa" }}
+                          >
+                            {mat.cours_count} cours
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                    {selectedModule.matieres.length === 0 ? <EmptyState message="Aucune matière dans ce module." /> : null}
+                  </div>
+                </article>
+              </>
+            ) : null}
+
+            {/* Cours — matière: show brochures if any, else cours list */}
+            {stageaireView === "cours" && selectedMatiere && !selectedBrochure && !selectedCours ? (
+              <>
+                <div className="flex items-center gap-2 px-1">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedMatiere(null)}
+                    className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-app-dark/60 transition hover:bg-app-soft"
+                  >
+                    ← {selectedMatiere.module_nom}
+                  </button>
+                  <span className="text-app-dark/30">/</span>
+                  <h3 className="text-base font-semibold truncate text-app-dark">{selectedMatiere.nom}</h3>
+                </div>
+
+                {/* Brochures */}
+                {selectedMatiere.brochures.length > 0 ? (
+                  <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
+                    <h3 className="text-lg font-semibold">Brochures</h3>
+                    <div className="mt-4 grid gap-3 md:grid-cols-2">
+                      {selectedMatiere.brochures.map((b) => (
+                        <div
+                          className="cursor-pointer rounded-xl border border-app-muted bg-app-soft/50 p-4 transition-all hover:border-app-dark/40 hover:bg-app-soft hover:shadow-sm"
+                          key={b.id}
+                          onClick={() => void handleOpenBrochure(b.id)}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="text-sm font-semibold leading-snug">{b.nom}</p>
+                            <span
+                              className="mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold text-white"
+                              style={{ background: b.cours_count > 0 ? "#25343F" : "#aaa" }}
+                            >
+                              {b.cours_count} cours
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </article>
+                ) : (
+                  /* No brochures — show cours directly */
+                  <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
+                    <h3 className="text-lg font-semibold">Cours</h3>
+                    <div className="mt-4 grid gap-3 md:grid-cols-2">
+                      {selectedMatiere.cours.map((c) => (
+                        <div
+                          className="cursor-pointer rounded-xl border border-app-muted bg-app-soft/50 p-4 transition-all hover:border-app-dark/40 hover:bg-app-soft hover:shadow-sm"
+                          key={c.id}
+                          onClick={() => void handleOpenCours(c.id)}
+                        >
+                          <p className="text-sm font-semibold leading-snug">{c.titre}</p>
+                          {c.description ? <p className="mt-1 text-xs text-app-dark/60 line-clamp-2">{c.description}</p> : null}
+                          <div className="mt-2 flex items-center justify-between gap-2">
+                            <span className="text-xs text-app-dark/50">Instructeur: {c.instructeur}</span>
+                            {c.controles_count > 0 && (
+                              <span className="rounded-full px-2 py-0.5 text-xs font-semibold text-white" style={{ background: "#FF9B51" }}>
+                                {c.controles_count} contrôle{c.controles_count > 1 ? "s" : ""}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                      {selectedMatiere.cours.length === 0 ? <EmptyState message="Aucun cours dans cette matière." /> : null}
+                    </div>
+                  </article>
+                )}
+              </>
+            ) : null}
+
+            {/* Cours — cours list within a brochure */}
+            {stageaireView === "cours" && selectedBrochure && !selectedCours ? (
+              <>
+                <div className="flex items-center gap-2 px-1">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedBrochure(null)}
+                    className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-app-dark/60 transition hover:bg-app-soft"
+                  >
+                    ← {selectedBrochure.matiere_nom}
+                  </button>
+                  <span className="text-app-dark/30">/</span>
+                  <h3 className="text-base font-semibold truncate text-app-dark">{selectedBrochure.nom}</h3>
+                </div>
+
+                <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
+                  <h3 className="text-lg font-semibold">Cours</h3>
+                  <div className="mt-4 grid gap-3 md:grid-cols-2">
+                    {selectedBrochure.cours.map((c) => (
+                      <div
+                        className="cursor-pointer rounded-xl border border-app-muted bg-app-soft/50 p-4 transition-all hover:border-app-dark/40 hover:bg-app-soft hover:shadow-sm"
+                        key={c.id}
+                        onClick={() => void handleOpenCours(c.id)}
+                      >
+                        <p className="text-sm font-semibold leading-snug">{c.titre}</p>
+                        {c.description ? <p className="mt-1 text-xs text-app-dark/60 line-clamp-2">{c.description}</p> : null}
+                        <div className="mt-2 flex items-center justify-between gap-2">
+                          <span className="text-xs text-app-dark/50">Instructeur: {c.instructeur}</span>
+                          {c.controles_count > 0 && (
+                            <span className="rounded-full px-2 py-0.5 text-xs font-semibold text-white" style={{ background: "#FF9B51" }}>
+                              {c.controles_count} contrôle{c.controles_count > 1 ? "s" : ""}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    {selectedBrochure.cours.length === 0 ? <EmptyState message="Aucun cours dans cette brochure." /> : null}
+                  </div>
+                </article>
+              </>
             ) : null}
 
             {/* Cours — detail with PDF viewer */}
@@ -1866,7 +2167,7 @@ function DashboardPage({
                   >
                     ← Retour aux cours
                   </button>
-                  <h3 className="text-lg font-semibold truncate">{selectedCours.titre}</h3>
+                  <h3 className="text-lg font-semibold truncate">{selectedCours.matiere}</h3>
                 </div>
 
                 {/* Course meta */}
@@ -2011,7 +2312,15 @@ function DashboardPage({
                           {s.statut}
                         </span>
                       </div>
-                      <p className="mt-1 text-xs text-app-dark/50">Soumis le {new Date(s.submitted_at).toLocaleDateString("fr-FR")}{s.has_fichier ? " · fichier joint" : ""}</p>
+                      <p className="mt-1 text-xs text-app-dark/50">
+                        Soumis le {new Date(s.submitted_at).toLocaleDateString("fr-FR")}
+                        {s.has_fichier ? (
+                          <span className="ml-2 inline-flex items-center gap-1 rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-700">
+                            <svg className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
+                            fichier joint
+                          </span>
+                        ) : null}
+                      </p>
                       {s.note !== null && (
                         <p className="mt-2 text-sm font-semibold text-emerald-700">Note: {s.note}/20</p>
                       )}
@@ -2023,6 +2332,35 @@ function DashboardPage({
                       ) : (
                         <p className="mt-2 text-xs text-app-dark/40 italic">Aucune correction publiée pour ce contrôle.</p>
                       )}
+                      {/* File attach area — shown when no file has been submitted yet */}
+                      {!s.has_fichier ? (
+                        <div className="mt-3 rounded border border-dashed border-app-muted bg-app-soft/50 p-3">
+                          <p className="mb-2 text-xs font-semibold text-app-dark/70">Ajouter un fichier réponse</p>
+                          <label className="grid gap-1 text-xs">
+                            <input
+                              accept=".rtf,.doc,.docx,.pdf,application/rtf,text/rtf"
+                              className="rounded border border-app-muted bg-white px-2 py-1 text-xs"
+                              type="file"
+                              onChange={(e) => {
+                                const f = e.target.files?.[0];
+                                if (f) setSubmissionFiles((prev) => ({ ...prev, [s.controle_id]: f }));
+                              }}
+                            />
+                            {submissionFiles[s.controle_id] ? (
+                              <span className="text-app-dark/60">{submissionFiles[s.controle_id].name}</span>
+                            ) : null}
+                          </label>
+                          {submissionFiles[s.controle_id] ? (
+                            <button
+                              className="mt-2 rounded bg-app-dark px-3 py-1.5 text-xs text-white"
+                              type="button"
+                              onClick={() => void handleSubmitAnswer(s.controle_id)}
+                            >
+                              Attacher le fichier
+                            </button>
+                          ) : null}
+                        </div>
+                      ) : null}
                     </div>
                   ))}
                   {(stageaireData.soumissions_detail ?? []).length === 0 ? <EmptyState message="Vous n'avez encore soumis aucune réponse." /> : null}
@@ -3069,8 +3407,6 @@ function AppShell() {
     matricule: string;
     est_civil: boolean;
     corps_id: string;
-    rank_id: string;
-    speciality_id: string;
   }) => {
     setError(null);
     const response = await fetch(`${API_BASE_URL}/api/signup/`, {
