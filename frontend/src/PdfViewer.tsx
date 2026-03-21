@@ -135,12 +135,12 @@ export default function PdfViewer({ base64, name, onClose, onDownload }: PdfView
   return (
     <div
       className="modal-backdrop fixed inset-0 z-50 flex flex-col"
-      style={{ background: "rgba(37,52,63,0.92)" }}
+      style={{ background: "rgba(21,23,61,0.92)" }}
     >
       {/* Toolbar */}
       <div
         className="flex h-14 flex-shrink-0 items-center gap-3 border-b px-4"
-        style={{ background: "#25343F", borderColor: "rgba(255,255,255,0.1)" }}
+        style={{ background: "#15173D", borderColor: "rgba(255,255,255,0.1)" }}
       >
         {/* Filename */}
         <span className="flex-1 truncate text-sm font-semibold text-white" title={name}>
@@ -178,7 +178,7 @@ export default function PdfViewer({ base64, name, onClose, onDownload }: PdfView
         {/* Download button */}
         <button
           className="rounded-lg px-3 py-1.5 text-xs font-semibold text-white transition"
-          style={{ background: "#FF9B51" }}
+          style={{ background: "#982598" }}
           type="button"
           onClick={onDownload}
           title="Télécharger"
@@ -211,7 +211,7 @@ export default function PdfViewer({ base64, name, onClose, onDownload }: PdfView
             <p className="text-sm font-semibold text-red-300">⚠ {error}</p>
             <button
               className="mt-3 rounded-lg px-4 py-2 text-xs font-semibold text-white"
-              style={{ background: "#FF9B51" }}
+              style={{ background: "#982598" }}
               type="button"
               onClick={onDownload}
             >

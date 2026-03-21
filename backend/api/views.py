@@ -100,6 +100,32 @@ def ensure_reference_manager(profile):
     return None
 
 
+def notify_stagiaires_correction_published(controle, correction):
+    """Notify every stagiaire who submitted to this contrôle that the correction is available."""
+    stagiaire_ids = (
+        SoumissionControle.objects.filter(controle=controle)
+        .values_list("stagiaire_id", flat=True)
+        .distinct()
+    )
+    titre = f"Correction disponible : {controle.nom}"
+    version_label = f" (version {correction.version_no})" if correction.version_no > 1 else ""
+    correction_titre = f" — {correction.titre}" if correction.titre else ""
+    message = (
+        f"Le Service pédagogique a publié la correction{version_label}{correction_titre} "
+        f"pour le contrôle « {controle.nom} » (cours : {controle.cours.titre})."
+    )
+    Notification.objects.bulk_create([
+        Notification(
+            destinataire_id=uid,
+            type_notification="correction_publiee",
+            titre=titre,
+            message=message,
+            lien_cible=f"/controles/{controle.id_controle}",
+        )
+        for uid in stagiaire_ids
+    ])
+
+
 def notify_stagiaires_new_cours(cours):
     """Create a notification for every stagiaire when a cours is published."""
     User = get_user_model()
@@ -288,6 +314,7 @@ class InstructeurDashboardView(APIView):
                 "classes_count": classes.count(),
                 "classes": [
                     {
+                        "id": item.classe.id_classe,
                         "code": item.classe.code_classe,
                         "label": item.classe.libelle,
                         "brigade": item.classe.brigade.code_brigade,
@@ -444,6 +471,8 @@ class StageaireDashboardView(APIView):
                         "name": c.nom,
                         "deadline": c.date_limite,
                         "cours": c.cours.titre,
+                        "enonce": c.enonce,
+                        "bareme": str(c.bareme),
                     }
                     for c in controle_ids.select_related("cours").order_by("date_limite")[:20]
                 ],
@@ -583,7 +612,7 @@ class AdminDashboardView(APIView):
         if profile.role != UserProfile.ROLE_ADMIN:
             return Response({"detail": "Forbidden for this role"}, status=status.HTTP_403_FORBIDDEN)
 
-        users = get_user_model().objects.all().order_by("-date_joined")[:100]
+        users = get_user_model().objects.select_related("profile").all().order_by("username")
         return Response(
             {
                 "role": profile.role,
@@ -596,13 +625,13 @@ class AdminDashboardView(APIView):
                 },
                 "users": [
                     {
-                        "id": user.id,
-                        "username": user.username,
-                        "email": user.email,
-                        "is_active": user.is_active,
-                        "role": getattr(getattr(user, "profile", None), "role", ""),
+                        "id": u.id,
+                        "username": u.username,
+                        "email": u.email,
+                        "is_active": u.is_active,
+                        "role": getattr(getattr(u, "profile", None), "role", ""),
                     }
-                    for user in users
+                    for u in users
                 ],
             }
         )
@@ -699,6 +728,7 @@ class AdminCreateAccountView(APIView):
             {
                 "id": user.id,
                 "username": user.username,
+                "password": password,
                 "email": user.email,
                 "role": role,
                 "matricule": matricule,
@@ -709,6 +739,36 @@ class AdminCreateAccountView(APIView):
             },
             status=status.HTTP_201_CREATED,
         )
+
+
+class AdminResetUserPasswordView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, user_id):
+        profile, _ = UserProfile.objects.get_or_create(user=request.user)
+        if profile.role != UserProfile.ROLE_ADMIN:
+            return Response({"detail": "Forbidden for this role"}, status=status.HTTP_403_FORBIDDEN)
+
+        new_password = (request.data.get("password") or "").strip()
+        if not new_password:
+            return Response({"detail": "password is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        user_model = get_user_model()
+        target = user_model.objects.filter(id=user_id).first()
+        if not target:
+            return Response({"detail": "user not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        target.set_password(new_password)
+        target.save(update_fields=["password"])
+        log_event(
+            request=request,
+            event_type="admin.user.password_reset",
+            target_type="user",
+            target_id=target.id,
+            message=f"Admin reset password for {target.username}",
+            metadata={},
+        )
+        return Response({"detail": "password updated"})
 
 
 class AdminBulkCreateAccountsCsvView(APIView):
@@ -1286,26 +1346,27 @@ class AdminClassesView(APIView):
         if profile.role != UserProfile.ROLE_ADMIN:
             return Response({"detail": "Forbidden for this role"}, status=status.HTTP_403_FORBIDDEN)
 
-        code_classe = (request.data.get("code_classe") or "").strip()
         libelle = (request.data.get("libelle") or "").strip()
-        brigade_code = (request.data.get("brigade_code") or "").strip()
-        brigade_label = (request.data.get("brigade_label") or "").strip() or brigade_code
 
-        if not code_classe or not libelle or not brigade_code:
+        if not libelle:
             return Response(
-                {"detail": "code_classe, libelle and brigade_code are required"},
+                {"detail": "Le nom de la classe est requis."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        if Classe.objects.filter(code_classe=code_classe).exists():
-            return Response({"detail": "class already exists"}, status=status.HTTP_400_BAD_REQUEST)
 
-        brigade, created = Brigade.objects.get_or_create(
-            code_brigade=brigade_code,
-            defaults={"libelle": brigade_label},
+        # Auto-generate a unique code from the name
+        base_code = "".join(w[0] for w in libelle.upper().split() if w)[:6] or "CL"
+        code_classe = base_code
+        counter = 1
+        while Classe.objects.filter(code_classe=code_classe).exists():
+            code_classe = f"{base_code}{counter}"
+            counter += 1
+
+        # Use or create a default brigade
+        brigade, _ = Brigade.objects.get_or_create(
+            code_brigade="DEFAULT",
+            defaults={"libelle": "Brigade Principale"},
         )
-        if not created and brigade_label and brigade.libelle != brigade_label:
-            brigade.libelle = brigade_label
-            brigade.save(update_fields=["libelle"])
 
         classe = Classe.objects.create(code_classe=code_classe, libelle=libelle, brigade=brigade)
         log_event(
@@ -1425,6 +1486,54 @@ class AdminAssignInstructeurToClassView(APIView):
         )
 
 
+class AdminDeleteClassView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, class_id):
+        profile, _ = UserProfile.objects.get_or_create(user=request.user)
+        if profile.role != UserProfile.ROLE_ADMIN:
+            return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+        classe = Classe.objects.filter(id_classe=class_id).first()
+        if not classe:
+            return Response({"detail": "class not found"}, status=status.HTTP_404_NOT_FOUND)
+        classe.delete()
+        return Response({"status": "deleted"})
+
+
+class AdminRemoveStageaireFromClassView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, class_id):
+        profile, _ = UserProfile.objects.get_or_create(user=request.user)
+        if profile.role != UserProfile.ROLE_ADMIN:
+            return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+        stageaire_id = request.data.get("stageaire_id")
+        today = timezone.now().date()
+        StagiaireClasse.objects.filter(
+            classe__id_classe=class_id,
+            stagiaire_id=stageaire_id,
+            date_fin__isnull=True,
+        ).update(date_fin=today)
+        return Response({"status": "removed"})
+
+
+class AdminRemoveInstructeurFromClassView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, class_id):
+        profile, _ = UserProfile.objects.get_or_create(user=request.user)
+        if profile.role != UserProfile.ROLE_ADMIN:
+            return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+        instructeur_id = request.data.get("instructeur_id")
+        today = timezone.now().date()
+        AffectationInstructeurClasse.objects.filter(
+            classe__id_classe=class_id,
+            instructeur_id=instructeur_id,
+            date_fin__isnull=True,
+        ).update(date_fin=today)
+        return Response({"status": "removed"})
+
+
 class InstructeurCoursCreateView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -1438,6 +1547,7 @@ class InstructeurCoursCreateView(APIView):
         specialite_id = request.data.get("specialite_id")
         module_id = request.data.get("module_id")
         matiere_id = request.data.get("matiere_id")
+        classe_id = request.data.get("classe_id")
         publier = bool(request.data.get("publier", False))
 
         if not titre:
@@ -1464,6 +1574,10 @@ class InstructeurCoursCreateView(APIView):
             if not module and matiere.module:
                 module = matiere.module
 
+        classe = None
+        if classe_id:
+            classe = Classe.objects.filter(id_classe=classe_id).first()
+
         cours = Cours.objects.create(
             titre=titre,
             description=description,
@@ -1471,6 +1585,7 @@ class InstructeurCoursCreateView(APIView):
             specialite=specialite,
             module=module,
             matiere=matiere,
+            classe=classe,
             statut=Cours.STATUT_PUBLIE if publier else Cours.STATUT_BROUILLON,
             date_depot=timezone.now().date(),
         )
@@ -1681,6 +1796,7 @@ class InstructeurPublishCorrectionView(APIView):
             message=f"Instructeur published correction for {controle.nom}",
             metadata={"version": correction.version_no},
         )
+        notify_stagiaires_correction_published(controle, correction)
 
         return Response(
             {
@@ -1690,6 +1806,34 @@ class InstructeurPublishCorrectionView(APIView):
             },
             status=status.HTTP_201_CREATED,
         )
+
+
+class InstructeurCoursDeleteView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, cours_id):
+        profile, _ = UserProfile.objects.get_or_create(user=request.user)
+        if profile.role != UserProfile.ROLE_INSTRUCTEUR:
+            return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+        cours = Cours.objects.filter(id_cours=cours_id, instructeur=request.user).first()
+        if not cours:
+            return Response({"detail": "not found"}, status=status.HTTP_404_NOT_FOUND)
+        cours.delete()
+        return Response({"status": "deleted"})
+
+
+class InstructeurControleDeleteView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, controle_id):
+        profile, _ = UserProfile.objects.get_or_create(user=request.user)
+        if profile.role != UserProfile.ROLE_INSTRUCTEUR:
+            return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+        controle = Controle.objects.filter(id_controle=controle_id, instructeur=request.user).first()
+        if not controle:
+            return Response({"detail": "not found"}, status=status.HTTP_404_NOT_FOUND)
+        controle.delete()
+        return Response({"status": "deleted"})
 
 
 class InstructeurCoursFichierView(APIView):
@@ -1846,7 +1990,7 @@ class StageaireCoursDetailView(APIView):
         return Response({
             "id": cours.id_cours,
             "titre": cours.titre,
-            "matiere": cours.specialite.libelle if cours.specialite else cours.titre,
+            "matiere": cours.matiere.nom if cours.matiere else (cours.specialite.libelle if cours.specialite else ""),
             "description": cours.description,
             "instructeur": cours.instructeur.username,
             "date_depot": cours.date_depot,

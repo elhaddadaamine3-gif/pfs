@@ -4,6 +4,7 @@ import PdfViewer, { InlinePdfViewer } from "./PdfViewer";
 import { useTranslation } from "react-i18next";
 import Alert from "@mui/material/Alert";
 import Button from "@mui/material/Button";
+import InputAdornment from "@mui/material/InputAdornment";
 import TextField from "@mui/material/TextField";
 import {
   BrowserRouter,
@@ -34,7 +35,7 @@ type Role = "Instructeur" | "Stagiaire" | "Admin" | "Superviseur" | "Coordinateu
 type InstructeurDashboardData = {
   role: Role;
   classes_count: number;
-  classes: Array<{ code: string; label: string; brigade: string }>;
+  classes: Array<{ id: string; code: string; label: string; brigade: string }>;
   cours: { total: number; published: number };
   cours_list: Array<{ id: string; title: string; status: string }>;
   controles: { total: number; published: number; pending_corrections: number };
@@ -50,7 +51,7 @@ type StageaireDashboardData = {
   cours_list: Array<{ id: string; titre: string; matiere: string; description: string; instructeur: string; controles_count: number }>;
   modules_list: Array<{ id: string; nom: string; matieres: Array<{ id: string; nom: string; cours_count: number }> }>;
   controls: { available_count: number; submitted_count: number; pending_count: number };
-  controls_list: Array<{ id: string; name: string; deadline: string | null; cours: string }>;
+  controls_list: Array<{ id: string; name: string; deadline: string | null; cours: string; enonce: string; bareme: string }>;
   submitted_control_ids: string[];
   soumissions_detail: Array<{ soumission_id: string; controle_id: string; controle_name: string; statut: string; submitted_at: string; has_fichier: boolean; note: string | null; correction_publiee: string | null; correction_titre: string | null }>;
   notes: Array<{ controle: string; note: string; published_at: string | null }>;
@@ -173,8 +174,13 @@ function Layout({
     <div className="min-h-screen bg-app-soft text-app-dark">
       <header className="sticky top-0 z-20 border-b border-app-muted/60 bg-white/95 backdrop-blur">
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-3">
-          <Link className="text-lg font-semibold tracking-tight text-app-dark" to="/">
-            {t("nav.brand")}
+          <Link className="flex items-center gap-2.5 text-lg font-semibold tracking-tight text-app-dark" to="/">
+            <img
+              src="/logo.png"
+              alt="Logo"
+              className="h-10 w-10 rounded-full object-cover shadow-sm"
+            />
+            <span>{t("nav.brand")}</span>
           </Link>
           <nav className="flex items-center gap-2">
             <HeaderLink to="/">{t("nav.home")}</HeaderLink>
@@ -469,32 +475,116 @@ function ReferenceManagementSection({
 }
 
 function HomePage() {
-  const { t } = useTranslation();
   return (
-    <main className="mx-auto w-full max-w-6xl px-4 py-10">
-      <section className="grid gap-8 rounded-2xl border border-app-muted bg-white p-8 shadow-sm md:grid-cols-2">
-        <div>
-          <p className="text-sm font-semibold uppercase tracking-[0.12em] text-app-accent">{t("home.badge")}</p>
-          <h1 className="mt-3 text-4xl font-semibold tracking-tight text-app-dark">{t("home.title")}</h1>
-          <p className="mt-4 text-sm leading-6 text-app-dark/80">{t("home.subtitle")}</p>
-          <div className="mt-6 flex gap-3">
-            <Link className="rounded-md bg-app-dark px-4 py-2 text-sm font-semibold text-white hover:opacity-90" to="/login">
-              {t("home.ctaLogin")}
-            </Link>
-            <Link className="rounded-md border border-app-dark px-4 py-2 text-sm font-semibold text-app-dark hover:bg-app-dark hover:text-white" to="/signup">
-              {t("home.ctaSignup")}
-            </Link>
+    <main className="mx-auto w-full max-w-6xl px-4 py-10 grid gap-6">
+
+      {/* ── Hero banner ── */}
+      <div
+        className="relative overflow-hidden rounded-2xl shadow-xl"
+        style={{ background: "linear-gradient(135deg, #0E0F29 0%, #15173D 60%, #1E1F4A 100%)" }}
+      >
+        {/* Decorative blobs */}
+        <div className="pointer-events-none absolute -right-16 -top-16 h-64 w-64 rounded-full opacity-10" style={{ background: "#982598" }} />
+        <div className="pointer-events-none absolute -bottom-10 right-32 h-40 w-40 rounded-full opacity-10" style={{ background: "#982598" }} />
+        <div className="pointer-events-none absolute bottom-6 right-6 h-20 w-20 rounded-full opacity-10" style={{ background: "#982598" }} />
+
+        <div className="relative flex flex-col gap-10 p-10 md:flex-row md:items-center md:justify-between">
+
+          {/* Left — text */}
+          <div className="max-w-xl">
+            <p className="text-xs font-bold uppercase tracking-widest" style={{ color: "#982598" }}>
+              Enterprise Training Platform
+            </p>
+            <h1 className="mt-3 text-4xl font-black uppercase leading-tight text-white md:text-5xl">
+              Plateforme de<br />
+              <span style={{ color: "#982598" }}>Cours en Ligne</span>
+            </h1>
+            <p className="mt-4 text-base text-white/70 leading-relaxed">
+              A modern workspace for people, programs, and progression.
+            </p>
+            <p className="mt-2 text-sm text-white/50">
+              Unified collaboration between{" "}
+              {["Instructeurs", "Stagiaires", "Admins", "Superviseurs", "Coordinateurs"].map((role, i, arr) => (
+                <span key={role}>
+                  <span style={{ color: "#982598" }} className="font-semibold">{role}</span>
+                  {i < arr.length - 1 ? ", " : "."}
+                </span>
+              ))}
+            </p>
+            <div className="mt-8 flex flex-wrap gap-3">
+              <Link
+                className="rounded-xl px-6 py-3 text-sm font-bold text-white shadow-lg transition hover:opacity-90"
+                style={{ background: "#982598" }}
+                to="/login"
+              >
+                Se connecter →
+              </Link>
+              <Link
+                className="rounded-xl border px-6 py-3 text-sm font-bold text-white/80 transition hover:bg-white/10"
+                style={{ borderColor: "rgba(152,37,152,0.4)" }}
+                to="/signup"
+              >
+                Créer un compte
+              </Link>
+            </div>
+          </div>
+
+          {/* Right — illustration */}
+          <div className="flex shrink-0 flex-col items-center gap-4">
+            {/* Fake monitor */}
+            <div
+              className="flex h-40 w-56 flex-col rounded-2xl border-4 shadow-2xl"
+              style={{ background: "rgba(255,255,255,0.05)", borderColor: "rgba(152,37,152,0.3)" }}
+            >
+              <div className="flex flex-1 flex-col justify-center gap-2 p-4">
+                <div className="h-2.5 w-full rounded-full bg-white/40" />
+                <div className="h-2.5 w-4/5 rounded-full bg-white/25" />
+                <div className="h-2.5 w-3/5 rounded-full bg-white/25" />
+                <div className="mt-3 flex items-center gap-2">
+                  <div
+                    className="flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold text-white"
+                    style={{ background: "#982598" }}
+                  >✓</div>
+                  <div className="h-2.5 flex-1 rounded-full bg-white/20" />
+                </div>
+              </div>
+              <div className="flex justify-center pb-2">
+                <div className="h-3 w-10 rounded-b bg-white/10" />
+              </div>
+            </div>
+            <div className="h-2 w-20 rounded-full bg-white/10" />
+
+            {/* Role pills */}
+            <div className="flex flex-wrap justify-center gap-2 mt-1">
+              {["Admin", "Instructeur", "Stagiaire", "Superviseur", "Coordinateur"].map((r) => (
+                <span
+                  key={r}
+                  className="rounded-full px-3 py-1 text-xs font-semibold text-white/80"
+                  style={{ background: "rgba(152,37,152,0.18)" }}
+                >
+                  {r}
+                </span>
+              ))}
+            </div>
           </div>
         </div>
-        <div className="rounded-xl bg-gradient-to-br from-app-soft to-app-muted p-5">
-          <h2 className="text-lg font-semibold text-app-dark">{t("home.highlightsTitle")}</h2>
-          <ul className="mt-4 space-y-3 text-sm text-app-dark/80">
-            <li className="rounded-md border border-white/80 bg-white/70 p-3">{t("home.highlight1")}</li>
-            <li className="rounded-md border border-white/80 bg-white/70 p-3">{t("home.highlight2")}</li>
-            <li className="rounded-md border border-white/80 bg-white/70 p-3">{t("home.highlight3")}</li>
-          </ul>
-        </div>
-      </section>
+      </div>
+
+      {/* ── Feature cards ── */}
+      <div className="grid gap-4 md:grid-cols-3">
+        {[
+          { icon: "📚", title: "Cours structurés", desc: "Modules, matières, brochures et leçons organisés hiérarchiquement." },
+          { icon: "📝", title: "Contrôles & Corrections", desc: "Publiez des examens, recevez les soumissions et notez en ligne." },
+          { icon: "📊", title: "Suivi de progression", desc: "Tableaux de bord par rôle pour un suivi en temps réel." },
+        ].map((f) => (
+          <div key={f.title} className="rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
+            <span className="text-3xl">{f.icon}</span>
+            <h3 className="mt-3 text-base font-bold text-app-dark">{f.title}</h3>
+            <p className="mt-1 text-sm text-app-dark/60 leading-relaxed">{f.desc}</p>
+          </div>
+        ))}
+      </div>
+
     </main>
   );
 }
@@ -708,6 +798,7 @@ function DashboardPage({
   const [courseDescription, setCourseDescription] = useState("");
   const [courseModuleId, setCourseModuleId] = useState("");
   const [courseMatiereId, setCourseMatiereId] = useState("");
+  const [courseClasseId, setCourseClasseId] = useState("");
   const [courseFichierFile, setCourseFichierFile] = useState<File | null>(null);
   const [controlCoursId, setControlCoursId] = useState("");
   const [controlName, setControlName] = useState("");
@@ -720,6 +811,11 @@ function DashboardPage({
   const [correctionText, setCorrectionText] = useState<Record<string, string>>({});
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [pdfViewer, setPdfViewer] = useState<{ base64: string; name: string; mimeType: string } | null>(null);
+  const [lessonModal, setLessonModal] = useState<{
+    cours: { id: string; titre: string; matiere: string; description: string; instructeur: string; date_depot: string; fichiers: Array<{ id_cours_fichier: string; nom_fichier: string; mime_type: string; taille_octets: number }> };
+    files: Record<string, { base64: string; name: string; mimeType: string }>;
+  } | null>(null);
+  const [lessonModalLoading, setLessonModalLoading] = useState(false);
   const [instructeurView, setInstructeurView] = useState<"dashboard" | "cours" | "controles" | "corriger" | "reponse_controle" | "sujet">("dashboard");
   const [stageaireView, setStageaireView] = useState<"dashboard" | "cours" | "controles" | "reponse_controle" | "sujet">("dashboard");
   const [adminView, setAdminView] = useState<"overview" | "users" | "accounts" | "subjects" | "classes" | "references" | "events">("overview");
@@ -730,6 +826,16 @@ function DashboardPage({
   const [subjectCourses, setSubjectCourses] = useState<SubjectCourseData[]>([]);
   const [subjectTab, setSubjectTab] = useState<"subjects" | "controls" | "courses">("subjects");
   const [newSubjectLabel, setNewSubjectLabel] = useState("");
+  const [adminUserSearch, setAdminUserSearch] = useState("");
+  const [adminUsersExpanded, setAdminUsersExpanded] = useState(false);
+  const [adminUserRoleFilter, setAdminUserRoleFilter] = useState<string | null>(null);
+  const [adminStatusFilter, setAdminStatusFilter] = useState<"tous" | "actif" | "inactif">("tous");
+  const [adminUserSort, setAdminUserSort] = useState<"az" | "za" | "recent">("az");
+  const [adminUsersPage, setAdminUsersPage] = useState(1);
+  const ADMIN_USERS_PER_PAGE = 10;
+  const [instructeurCoursSearch, setInstructeurCoursSearch] = useState("");
+  const [adminCoursSearch, setAdminCoursSearch] = useState("");
+  const [adminControlSearch, setAdminControlSearch] = useState("");
   const [accountForm, setAccountForm] = useState({
     username: "",
     email: "",
@@ -741,13 +847,18 @@ function DashboardPage({
     rank_id: "",
     speciality_id: "",
   });
+  const [lastCreatedAccount, setLastCreatedAccount] = useState<{ username: string; password: string; role: string; matricule: string } | null>(null);
+  const [showAccountPassword, setShowAccountPassword] = useState(false);
+  const [resetPasswordState, setResetPasswordState] = useState<Record<number, { value: string; show: boolean; saved: string }>>({});
   const [csvFileName, setCsvFileName] = useState("");
   const [csvErrors, setCsvErrors] = useState<Array<{ line: number; error: string }>>([]);
   const [classesData, setClassesData] = useState<AdminClassData[]>([]);
-  const [newClassForm, setNewClassForm] = useState({ code_classe: "", libelle: "", brigade_code: "", brigade_label: "" });
+  const [newClassForm, setNewClassForm] = useState({ libelle: "" });
   const [selectedClassId, setSelectedClassId] = useState("");
-  const [selectedStageaireId, setSelectedStageaireId] = useState("");
-  const [selectedInstructeurId, setSelectedInstructeurId] = useState("");
+  const [selectedStageaireIds, setSelectedStageaireIds] = useState<number[]>([]);
+  const [selectedInstructeurIds, setSelectedInstructeurIds] = useState<number[]>([]);
+  const [stagSearch, setStagSearch] = useState("");
+  const [instrSearch, setInstrSearch] = useState("");
   const [referencesData, setReferencesData] = useState<{
     corps: ReferenceCorp[];
     ranks: ReferenceRank[];
@@ -769,6 +880,15 @@ function DashboardPage({
   useEffect(() => {
     void onLoadProfile();
   }, [onLoadProfile]);
+
+  useEffect(() => {
+    if (!lessonModal && !lessonModalLoading) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { setLessonModal(null); setLessonModalLoading(false); }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [lessonModal, lessonModalLoading]);
 
   useEffect(() => {
     if (!user) return;
@@ -859,7 +979,7 @@ function DashboardPage({
     const response = await apiFetch("/api/instructeur/cours/", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ titre: courseTitle, description: courseDescription, module_id: courseModuleId || undefined, matiere_id: courseMatiereId || undefined, publier: true }),
+      body: JSON.stringify({ titre: courseTitle, description: courseDescription, module_id: courseModuleId || undefined, matiere_id: courseMatiereId || undefined, classe_id: courseClasseId || undefined, publier: true }),
     });
     if (!response.ok) return;
     const created: { id: string } = await response.json();
@@ -874,6 +994,7 @@ function DashboardPage({
     const withFile = courseFichierFile ? ` + fichier « ${courseFichierFile.name} »` : "";
     setCourseTitle("");
     setCourseDescription("");
+    setCourseClasseId("");
     setCourseFichierFile(null);
     setActionMessage(`Cours « ${courseTitle} » publié${withFile}.`);
     await loadDashboard();
@@ -980,6 +1101,25 @@ function DashboardPage({
         if (!r.ok) return;
         const fd: { fichier_base64: string; nom_fichier: string; mime_type: string } = await r.json();
         setCoursFileCache((prev) => ({ ...prev, [f.id_cours_fichier]: { base64: fd.fichier_base64, name: fd.nom_fichier, mimeType: fd.mime_type } }));
+      });
+    }
+  };
+
+  const openCoursModal = async (coursId: string) => {
+    setLessonModalLoading(true);
+    setLessonModal(null);
+    const response = await apiFetch(`/api/stageaire/cours/${coursId}/`);
+    if (!response.ok) { setLessonModalLoading(false); return; }
+    const data = await response.json();
+    const files: Record<string, { base64: string; name: string; mimeType: string }> = {};
+    setLessonModal({ cours: data, files });
+    setLessonModalLoading(false);
+    // Fetch files in background, updating modal as each loads
+    for (const f of data.fichiers ?? []) {
+      apiFetch(`/api/stageaire/cours/${coursId}/fichier/${f.id_cours_fichier}/`).then(async (r) => {
+        if (!r.ok) return;
+        const fd: { fichier_base64: string; nom_fichier: string; mime_type: string } = await r.json();
+        setLessonModal((prev) => prev ? { ...prev, files: { ...prev.files, [f.id_cours_fichier]: { base64: fd.fichier_base64, name: fd.nom_fichier, mimeType: fd.mime_type } } } : prev);
       });
     }
   };
@@ -1098,42 +1238,44 @@ function DashboardPage({
       body: JSON.stringify(newClassForm),
     });
     if (response.ok) {
-      setActionMessage(`Classe « ${newClassForm.code_classe} — ${newClassForm.libelle} » créée (brigade ${newClassForm.brigade_code}).`);
-      setNewClassForm({ code_classe: "", libelle: "", brigade_code: "", brigade_label: "" });
+      setActionMessage(`Classe « ${newClassForm.libelle} » créée.`);
+      setNewClassForm({ libelle: "" });
       await loadClasses();
     }
   };
 
   const handleAssignStageaireToClass = async () => {
-    if (!selectedClassId || !selectedStageaireId) return;
-    const response = await apiFetch(`/api/admin/classes/${selectedClassId}/assign-stageaire/`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ stageaire_id: Number(selectedStageaireId) }),
-    });
-    if (response.ok) {
-      const cls = classesData.find((c) => c.id === selectedClassId);
-      const stag = adminData?.users.find((u) => u.id === Number(selectedStageaireId));
-      setActionMessage(`Stagiaire « ${stag?.username ?? selectedStageaireId} » affecté à la classe « ${cls?.code ?? selectedClassId} ».`);
-      setSelectedStageaireId("");
-      await loadClasses();
-    }
+    if (!selectedClassId || selectedStageaireIds.length === 0) return;
+    await Promise.all(
+      selectedStageaireIds.map((id) =>
+        apiFetch(`/api/admin/classes/${selectedClassId}/assign-stageaire/`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ stageaire_id: id }),
+        })
+      )
+    );
+    const cls = classesData.find((c) => c.id === selectedClassId);
+    setActionMessage(`${selectedStageaireIds.length} stagiaire(s) affecté(s) à la classe « ${cls?.code ?? selectedClassId} ».`);
+    setSelectedStageaireIds([]);
+    await loadClasses();
   };
 
   const handleAssignInstructeurToClass = async () => {
-    if (!selectedClassId || !selectedInstructeurId) return;
-    const response = await apiFetch(`/api/admin/classes/${selectedClassId}/assign-instructeur/`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ instructeur_id: Number(selectedInstructeurId) }),
-    });
-    if (response.ok) {
-      const cls = classesData.find((c) => c.id === selectedClassId);
-      const instr = adminData?.users.find((u) => u.id === Number(selectedInstructeurId));
-      setActionMessage(`Instructeur « ${instr?.username ?? selectedInstructeurId} » affecté à la classe « ${cls?.code ?? selectedClassId} ».`);
-      setSelectedInstructeurId("");
-      await loadClasses();
-    }
+    if (!selectedClassId || selectedInstructeurIds.length === 0) return;
+    await Promise.all(
+      selectedInstructeurIds.map((id) =>
+        apiFetch(`/api/admin/classes/${selectedClassId}/assign-instructeur/`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ instructeur_id: id }),
+        })
+      )
+    );
+    const cls = classesData.find((c) => c.id === selectedClassId);
+    setActionMessage(`${selectedInstructeurIds.length} instructeur(s) affecté(s) à la classe « ${cls?.code ?? selectedClassId} ».`);
+    setSelectedInstructeurIds([]);
+    await loadClasses();
   };
 
   const handleUpdateControlStatus = async (controlId: string, statusValue: string) => {
@@ -1170,7 +1312,8 @@ function DashboardPage({
       body: JSON.stringify(accountForm),
     });
     if (response.ok) {
-      setActionMessage(`Compte « ${accountForm.username} » créé avec le rôle ${accountForm.role}.`);
+      const data: { username: string; password: string; role: string; matricule: string } = await response.json();
+      setLastCreatedAccount({ username: data.username, password: data.password, role: data.role, matricule: data.matricule });
       setAccountForm({
         username: "",
         email: "",
@@ -1424,6 +1567,106 @@ function DashboardPage({
         />
       ) : null}
 
+      {/* Lesson modal — centered overlay */}
+      {(lessonModal || lessonModalLoading) ? (
+        <div
+          className="modal-backdrop fixed inset-0 z-50 flex items-center justify-center bg-app-dark/60 px-4"
+          onClick={() => { setLessonModal(null); setLessonModalLoading(false); }}
+        >
+          <div
+            className="modal-panel relative flex w-full max-w-4xl max-h-[90vh] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between gap-4 rounded-t-2xl px-6 py-4" style={{ background: "#15173D" }}>
+              <div className="min-w-0">
+                {lessonModal ? (
+                  <>
+                    <p className="truncate text-lg font-bold text-white">{lessonModal.cours.titre}</p>
+                    {lessonModal.cours.matiere ? (
+                      <p className="mt-0.5 text-xs text-white/60">{lessonModal.cours.matiere}</p>
+                    ) : null}
+                  </>
+                ) : (
+                  <p className="text-sm text-white/70">Chargement…</p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => { setLessonModal(null); setLessonModalLoading(false); }}
+                className="shrink-0 rounded-lg px-2 py-1 text-white/70 transition hover:bg-white/10 hover:text-white"
+                aria-label="Fermer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-5">
+              {lessonModalLoading && !lessonModal ? (
+                <div className="flex flex-col gap-3">
+                  <div className="skeleton skeleton-title" />
+                  <div className="skeleton skeleton-line" />
+                  <div className="skeleton skeleton-block" />
+                </div>
+              ) : lessonModal ? (
+                <>
+                  {/* Meta */}
+                  <div className="flex flex-wrap items-center gap-3 text-xs text-app-dark/50">
+                    <span>Instructeur : <span className="font-semibold text-app-dark">{lessonModal.cours.instructeur}</span></span>
+                    <span>Déposé le <span className="font-medium text-app-dark">{lessonModal.cours.date_depot}</span></span>
+                  </div>
+
+                  {/* Description */}
+                  {lessonModal.cours.description ? (
+                    <p className="rounded-xl border border-app-muted bg-app-soft/60 px-4 py-3 text-sm text-app-dark/80 whitespace-pre-wrap">
+                      {lessonModal.cours.description}
+                    </p>
+                  ) : null}
+
+                  {/* Files */}
+                  {lessonModal.cours.fichiers.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-app-muted p-6 text-center">
+                      <p className="text-sm italic text-app-dark/40">Aucun fichier disponible.</p>
+                    </div>
+                  ) : (
+                    lessonModal.cours.fichiers.map((f) => {
+                      const cached = lessonModal.files[f.id_cours_fichier];
+                      const isPdf = cached
+                        ? cached.mimeType === "application/pdf" || cached.name.toLowerCase().endsWith(".pdf")
+                        : f.mime_type === "application/pdf" || f.nom_fichier.toLowerCase().endsWith(".pdf");
+
+                      if (!cached) {
+                        return (
+                          <div key={f.id_cours_fichier} className="flex items-center gap-3 rounded-xl border border-app-muted bg-white px-4 py-4">
+                            <div className="skeleton h-5 w-5 rounded" />
+                            <span className="text-sm text-app-dark/50">Chargement de {f.nom_fichier}…</span>
+                          </div>
+                        );
+                      }
+
+                      if (isPdf) {
+                        return <InlinePdfViewer key={f.id_cours_fichier} base64={cached.base64} name={cached.name} />;
+                      }
+
+                      return (
+                        <div key={f.id_cours_fichier} className="flex items-center gap-3 rounded-xl border border-app-muted bg-white px-4 py-4">
+                          <span className="text-base">📎</span>
+                          <div>
+                            <p className="text-sm font-semibold text-app-dark">{f.nom_fichier}</p>
+                            <p className="text-xs text-app-dark/40">Aperçu non disponible pour ce format</p>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {toastState ? (
         <div className={`fixed right-4 top-20 z-40 max-w-md rounded-lg px-4 py-3 text-sm shadow-lg ${toastState.kind === "success" ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-700"} ${toastState.closing ? "toast-exit" : `toast-enter ${toastState.kind === "error" ? "shake-error" : ""}`}`}>
           <span className={toastState.kind === "success" ? "checkmark-pop font-semibold" : "font-semibold"}>
@@ -1450,9 +1693,9 @@ function DashboardPage({
                   onClick={() => setInstructeurView(tab)}
                   className="rounded-lg px-4 py-2 text-sm font-semibold transition"
                   style={{
-                    background: active ? "#25343F" : "white",
-                    color: active ? "white" : "#25343F",
-                    border: "1px solid #BFC9D1",
+                    background: active ? "#15173D" : "white",
+                    color: active ? "white" : "#15173D",
+                    border: "1px solid #E491C9",
                   }}
                 >
                   {labels[tab]}{badge}
@@ -1469,7 +1712,7 @@ function DashboardPage({
                 <div className="flex items-center gap-4">
                   <div
                     className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full text-xl font-bold text-white"
-                    style={{ background: "#25343F" }}
+                    style={{ background: "#15173D" }}
                   >
                     {user?.username?.[0]?.toUpperCase() ?? "?"}
                   </div>
@@ -1563,6 +1806,21 @@ function DashboardPage({
                     </select>
                   </label>
                   <label className="grid gap-1 text-sm md:col-span-2">
+                    Classe (optionnel)
+                    <select
+                      className="rounded border border-app-muted bg-white px-3 py-2 text-sm"
+                      value={courseClasseId}
+                      onChange={(e) => setCourseClasseId(e.target.value)}
+                    >
+                      <option value="">— Toutes les classes —</option>
+                      {instructeurData.classes.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.label} ({c.code} · Brigade {c.brigade})
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="grid gap-1 text-sm md:col-span-2">
                     Fichier RTF (optionnel)
                     <input
                       accept=".rtf,.doc,.docx,.pdf,application/rtf,text/rtf"
@@ -1580,14 +1838,52 @@ function DashboardPage({
 
               <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
                 <h3 className="text-lg font-semibold">Mes cours</h3>
+                <div className="mt-3 flex items-center gap-2 rounded-lg border border-app-muted bg-app-soft px-3 py-2">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 shrink-0 text-app-dark/40" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+                  </svg>
+                  <input
+                    className="w-full bg-transparent text-sm outline-none placeholder:text-app-dark/40"
+                    placeholder="Rechercher un cours…"
+                    value={instructeurCoursSearch}
+                    onChange={(e) => setInstructeurCoursSearch(e.target.value)}
+                  />
+                  {instructeurCoursSearch ? (
+                    <button className="text-app-dark/40 hover:text-app-dark" onClick={() => setInstructeurCoursSearch("")} type="button">✕</button>
+                  ) : null}
+                </div>
                 <div className="mt-3 space-y-2">
-                  {instructeurData.cours_list.map((c) => (
-                    <div className="rounded border border-app-muted p-3" key={c.id}>
-                      <p className="text-sm font-semibold">{c.title}</p>
-                      <p className="text-xs text-app-dark/60">{c.status}</p>
-                    </div>
-                  ))}
+                  {instructeurData.cours_list
+                    .filter((c) => c.title.toLowerCase().includes(instructeurCoursSearch.toLowerCase()))
+                    .map((c) => (
+                      <div className="flex items-center gap-3 rounded-xl border border-app-muted bg-white px-4 py-3" key={c.id}>
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white" style={{ background: "#15173D" }}>
+                          {c.title[0]?.toUpperCase()}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="truncate text-sm font-semibold text-app-dark">{c.title}</p>
+                          <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold ${c.status === "PUBLIE" ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"}`}>
+                            {c.status}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          title="Supprimer le cours"
+                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-sm text-red-500 transition hover:bg-red-100 hover:text-red-700"
+                          onClick={async () => {
+                            if (!confirm(`Supprimer le cours « ${c.title} » ?`)) return;
+                            await apiFetch(`/api/instructeur/cours/${c.id}/delete/`, { method: "DELETE" });
+                            await loadDashboard();
+                          }}
+                        >
+                          🗑
+                        </button>
+                      </div>
+                    ))}
                   {instructeurData.cours_list.length === 0 ? <EmptyState message="Aucun cours créé." /> : null}
+                  {instructeurData.cours_list.length > 0 && instructeurCoursSearch && instructeurData.cours_list.filter((c) => c.title.toLowerCase().includes(instructeurCoursSearch.toLowerCase())).length === 0 ? (
+                    <p className="text-sm text-app-dark/50">Aucun résultat pour « {instructeurCoursSearch} ».</p>
+                  ) : null}
                 </div>
               </article>
             </>
@@ -1636,9 +1932,29 @@ function DashboardPage({
                 <h3 className="text-lg font-semibold">Mes contrôles</h3>
                 <div className="mt-3 space-y-2">
                   {instructeurData.controles_list.map((c) => (
-                    <div className="rounded border border-app-muted p-3" key={c.id}>
-                      <p className="text-sm font-semibold">{c.name}</p>
-                      <p className="text-xs text-app-dark/60">{c.cours_title} — {c.status}</p>
+                    <div className="flex items-center gap-3 rounded-xl border border-app-muted bg-white px-4 py-3" key={c.id}>
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white" style={{ background: "#982598" }}>
+                        {c.name[0]?.toUpperCase()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="truncate text-sm font-semibold text-app-dark">{c.name}</p>
+                        <p className="truncate text-xs text-app-dark/50">{c.cours_title}</p>
+                        <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold ${c.status === "PUBLIE" ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"}`}>
+                          {c.status}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        title="Supprimer le contrôle"
+                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-sm text-red-500 transition hover:bg-red-100 hover:text-red-700"
+                        onClick={async () => {
+                          if (!confirm(`Supprimer le contrôle « ${c.name} » ?`)) return;
+                          await apiFetch(`/api/instructeur/controles/${c.id}/delete/`, { method: "DELETE" });
+                          await loadDashboard();
+                        }}
+                      >
+                        🗑
+                      </button>
                     </div>
                   ))}
                   {instructeurData.controles_list.length === 0 ? <EmptyState message="Aucun contrôle créé." /> : null}
@@ -1650,53 +1966,152 @@ function DashboardPage({
           {/* Corriger contrôle */}
           {instructeurView === "corriger" ? (
             <>
-              <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
-                <h3 className="text-lg font-semibold">Soumissions à noter</h3>
-                <div className="mt-3 space-y-3">
-                  {instructeurData.pending_submissions.length === 0 ? <EmptyState message="Aucune soumission en attente." /> : null}
-                  {instructeurData.pending_submissions.map((s) => (
-                    <div className="rounded border border-app-muted p-3" key={s.soumission_id}>
-                      <p className="text-sm font-semibold">{s.controle_name}</p>
-                      <p className="text-xs text-app-dark/70">Stagiaire #{s.stagiaire_id} · soumis le {new Date(s.submitted_at).toLocaleDateString("fr-FR")}</p>
-                      <button
-                        className="mt-1 rounded border border-app-muted px-2 py-1 text-xs text-app-dark/70 hover:bg-app-muted"
-                        type="button"
-                        onClick={() => void openFichierFromApi(`/api/instructeur/soumissions/${s.soumission_id}/fichier/`, "reponse.rtf")}
-                      >
-                        Télécharger réponse RTF
-                      </button>
-                      <div className="mt-2 grid gap-2 md:grid-cols-2">
-                        <Input label="Note /20" value={evalNote[s.soumission_id] ?? ""} onChange={(v) => setEvalNote((prev) => ({ ...prev, [s.soumission_id]: v }))} />
-                        <Input label="Commentaire" value={evalCorrection[s.soumission_id] ?? ""} onChange={(v) => setEvalCorrection((prev) => ({ ...prev, [s.soumission_id]: v }))} />
-                      </div>
-                      <button className="mt-2 rounded bg-app-dark px-3 py-1.5 text-xs text-white" type="button" onClick={() => void handleEvaluate(s.soumission_id)}>
-                        Publier la note
-                      </button>
-                    </div>
-                  ))}
+              {/* ── Soumissions à noter ── */}
+              <div className="overflow-hidden rounded-2xl border border-app-muted bg-white shadow-sm">
+                <div className="flex items-center justify-between border-b border-app-muted px-6 py-4" style={{ background: "#15173D" }}>
+                  <div>
+                    <p className="text-base font-bold text-white">Soumissions à noter</p>
+                    <p className="text-xs text-white/50 mt-0.5">Évaluez les réponses des stagiaires</p>
+                  </div>
+                  <span className="rounded-full bg-white/20 px-3 py-1 text-xs font-bold text-white">
+                    {instructeurData.pending_submissions.length} en attente
+                  </span>
                 </div>
-              </article>
 
-              <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
-                <h3 className="text-lg font-semibold">Publier la correction</h3>
-                <div className="mt-3 space-y-3">
+                <div className="divide-y divide-app-muted/40">
+                  {instructeurData.pending_submissions.length === 0 && (
+                    <div className="flex flex-col items-center gap-2 py-10 text-center">
+                      <span className="text-3xl">✅</span>
+                      <p className="text-sm font-medium text-app-dark/50">Aucune soumission en attente</p>
+                    </div>
+                  )}
+                  {instructeurData.pending_submissions.map((s) => {
+                    const stagiaire = instructeurData.pending_submissions.find((x) => x.soumission_id === s.soumission_id);
+                    return (
+                      <div key={s.soumission_id} className="p-5">
+                        {/* Card header */}
+                        <div className="flex items-start gap-4 mb-4">
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white" style={{ background: "#982598" }}>
+                            {String(s.stagiaire_id).slice(-2)}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-app-dark">{s.controle_name}</p>
+                            <p className="text-xs text-app-dark/50 mt-0.5">
+                              Stagiaire #{s.stagiaire_id} · soumis le {new Date(s.submitted_at).toLocaleDateString("fr-FR")}
+                            </p>
+                          </div>
+                          <span className="shrink-0 rounded-full bg-yellow-100 px-2.5 py-0.5 text-[11px] font-semibold text-yellow-700">En attente</span>
+                        </div>
+
+                        {/* Download */}
+                        <button
+                          type="button"
+                          className="mb-4 flex items-center gap-2 rounded-lg border border-app-muted bg-app-soft px-3 py-2 text-xs font-medium text-app-dark transition hover:border-app-accent hover:bg-white"
+                          onClick={() => void openFichierFromApi(`/api/instructeur/soumissions/${s.soumission_id}/fichier/`, "reponse.rtf")}
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-app-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                          </svg>
+                          Télécharger la réponse RTF
+                        </button>
+
+                        {/* Evaluation fields */}
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <div className="grid gap-1">
+                            <label className="text-xs font-semibold uppercase tracking-wide text-app-dark/50">Note /20</label>
+                            <input
+                              type="number"
+                              min="0" max="20"
+                              className="rounded-lg border border-app-muted bg-app-soft px-3 py-2 text-sm outline-none focus:border-app-accent focus:ring-2 focus:ring-app-accent/20"
+                              placeholder="ex : 15"
+                              value={evalNote[s.soumission_id] ?? ""}
+                              onChange={(e) => setEvalNote((prev) => ({ ...prev, [s.soumission_id]: e.target.value }))}
+                            />
+                          </div>
+                          <div className="grid gap-1">
+                            <label className="text-xs font-semibold uppercase tracking-wide text-app-dark/50">Commentaire</label>
+                            <input
+                              className="rounded-lg border border-app-muted bg-app-soft px-3 py-2 text-sm outline-none focus:border-app-accent focus:ring-2 focus:ring-app-accent/20"
+                              placeholder="Remarque optionnelle…"
+                              value={evalCorrection[s.soumission_id] ?? ""}
+                              onChange={(e) => setEvalCorrection((prev) => ({ ...prev, [s.soumission_id]: e.target.value }))}
+                            />
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          className="mt-3 rounded-xl px-5 py-2 text-sm font-bold text-white transition hover:opacity-90 disabled:opacity-40"
+                          style={{ background: "#982598" }}
+                          disabled={!evalNote[s.soumission_id]}
+                          onClick={() => void handleEvaluate(s.soumission_id)}
+                        >
+                          ✓ Publier la note
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* ── Publier la correction ── */}
+              <div className="overflow-hidden rounded-2xl border border-app-muted bg-white shadow-sm">
+                <div className="flex items-center justify-between border-b border-app-muted px-6 py-4" style={{ background: "#15173D" }}>
+                  <div>
+                    <p className="text-base font-bold text-white">Publier la correction officielle</p>
+                    <p className="text-xs text-white/50 mt-0.5">Rédigez la correction modèle pour chaque contrôle</p>
+                  </div>
+                  <span className="rounded-full bg-white/20 px-3 py-1 text-xs font-bold text-white">
+                    {instructeurData.controles_list.length} contrôle(s)
+                  </span>
+                </div>
+
+                <div className="divide-y divide-app-muted/40">
+                  {instructeurData.controles_list.length === 0 && (
+                    <div className="flex flex-col items-center gap-2 py-10 text-center">
+                      <span className="text-3xl">📋</span>
+                      <p className="text-sm font-medium text-app-dark/50">Aucun contrôle disponible</p>
+                    </div>
+                  )}
                   {instructeurData.controles_list.map((c) => (
-                    <div className="rounded border border-app-muted p-3" key={c.id}>
-                      <p className="text-sm font-semibold">{c.name}</p>
-                      <p className="text-xs text-app-dark/60 mb-2">{c.cours_title}</p>
-                      <Input
-                        label="Texte de correction"
-                        value={correctionText[c.id] ?? ""}
-                        onChange={(v) => setCorrectionText((prev) => ({ ...prev, [c.id]: v }))}
-                      />
-                      <button className="mt-2 rounded bg-app-dark px-3 py-1.5 text-xs text-white" type="button" onClick={() => void handlePublishCorrection(c.id)}>
-                        Publier correction
+                    <div key={c.id} className="p-5">
+                      {/* Header */}
+                      <div className="flex items-start gap-4 mb-4">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white" style={{ background: "#15173D" }}>
+                          {c.name[0]?.toUpperCase()}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-app-dark">{c.name}</p>
+                          <p className="text-xs text-app-dark/50 mt-0.5">{c.cours_title}</p>
+                        </div>
+                        <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${c.status === "PUBLIE" ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"}`}>
+                          {c.status}
+                        </span>
+                      </div>
+
+                      {/* Correction textarea */}
+                      <div className="grid gap-1 mb-3">
+                        <label className="text-xs font-semibold uppercase tracking-wide text-app-dark/50">Texte de correction</label>
+                        <textarea
+                          rows={3}
+                          className="rounded-lg border border-app-muted bg-app-soft px-3 py-2 text-sm outline-none focus:border-app-accent focus:ring-2 focus:ring-app-accent/20 resize-none"
+                          placeholder="Rédigez la correction modèle…"
+                          value={correctionText[c.id] ?? ""}
+                          onChange={(e) => setCorrectionText((prev) => ({ ...prev, [c.id]: e.target.value }))}
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        className="rounded-xl px-5 py-2 text-sm font-bold text-white transition hover:opacity-90 disabled:opacity-40"
+                        style={{ background: "#982598" }}
+                        disabled={!correctionText[c.id]}
+                        onClick={() => void handlePublishCorrection(c.id)}
+                      >
+                        ✓ Publier la correction
                       </button>
                     </div>
                   ))}
-                  {instructeurData.controles_list.length === 0 ? <EmptyState message="Aucun contrôle disponible." /> : null}
                 </div>
-              </article>
+              </div>
             </>
           ) : null}
 
@@ -1792,7 +2207,7 @@ function DashboardPage({
                           setCoursFileCache({});
                         }}
                         className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition text-left"
-                        style={{ background: isCoursActive ? "#25343F" : "transparent", color: isCoursActive ? "white" : "#25343F" }}
+                        style={{ background: isCoursActive ? "#15173D" : "transparent", color: isCoursActive ? "white" : "#15173D" }}
                       >
                         <span className="flex-1 truncate">Modules</span>
                         <svg
@@ -1814,7 +2229,7 @@ function DashboardPage({
                                 type="button"
                                 onClick={() => { setStageaireView("cours"); handleOpenModule(m); }}
                                 className="w-full flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs font-medium transition text-left"
-                                style={{ background: isModActive ? "#25343F" : "transparent", color: isModActive ? "white" : "#25343F" }}
+                                style={{ background: isModActive ? "#15173D" : "transparent", color: isModActive ? "white" : "#15173D" }}
                                 title={m.nom}
                               >
                                 <span className="flex-1 truncate">{m.nom}</span>
@@ -1848,13 +2263,13 @@ function DashboardPage({
                     type="button"
                     onClick={() => { setStageaireView(tab); setSelectedModule(null); setSelectedMatiere(null); setSelectedBrochure(null); setSelectedCours(null); setCoursFileCache({}); }}
                     className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition text-left"
-                    style={{ background: active ? "#25343F" : "transparent", color: active ? "white" : "#25343F" }}
+                    style={{ background: active ? "#15173D" : "transparent", color: active ? "white" : "#15173D" }}
                   >
                     <span className="flex-1 truncate">{labels[tab]}</span>
                     {badge > 0 ? (
                       <span
                         className="rounded-full px-1.5 py-0.5 text-xs font-bold leading-none"
-                        style={{ background: active ? "rgba(255,255,255,0.2)" : "#FF9B51", color: "white" }}
+                        style={{ background: active ? "rgba(255,255,255,0.2)" : "#982598", color: "white" }}
                       >
                         {badge}
                       </span>
@@ -1892,12 +2307,85 @@ function DashboardPage({
             {/* Dashboard */}
             {stageaireView === "dashboard" ? (
               <>
+                {/* Hero banner */}
+                <div
+                  className="relative overflow-hidden rounded-2xl p-8 shadow-lg"
+                  style={{ background: "linear-gradient(135deg, #0E0F29 0%, #15173D 60%, #1E1F4A 100%)" }}
+                >
+                  {/* Decorative shapes */}
+                  <div className="pointer-events-none absolute -right-10 -top-10 h-48 w-48 rounded-full opacity-10" style={{ background: "#982598" }} />
+                  <div className="pointer-events-none absolute -bottom-8 right-24 h-32 w-32 rounded-full opacity-10" style={{ background: "#982598" }} />
+                  <div className="pointer-events-none absolute bottom-4 right-4 h-16 w-16 rounded-full opacity-10" style={{ background: "#982598" }} />
+
+                  <div className="relative flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+                    {/* Text side */}
+                    <div>
+                      <p className="text-sm font-semibold uppercase tracking-widest text-white/60">Espace Stagiaire</p>
+                      <h1 className="mt-1 text-3xl font-black uppercase leading-tight text-white md:text-4xl">
+                        Plateforme de<br />
+                        <span style={{ color: "#982598" }}>Cours en Ligne</span>
+                      </h1>
+                      <p className="mt-3 max-w-sm text-sm text-white/70">
+                        Accédez à vos cours, consultez vos contrôles et suivez votre progression.
+                      </p>
+                      <button
+                        className="mt-5 rounded-xl px-5 py-2.5 text-sm font-bold shadow transition hover:opacity-90"
+                        style={{ background: "#982598", color: "#fff" }}
+                        onClick={() => setStageaireView("cours")}
+                        type="button"
+                      >
+                        Accéder aux cours →
+                      </button>
+                    </div>
+
+                    {/* Illustration side */}
+                    <div className="flex shrink-0 items-center justify-center gap-4">
+                      {/* Monitor illustration */}
+                      <div className="relative">
+                        <div className="flex h-32 w-44 flex-col rounded-xl border-4 bg-white/5 shadow-inner" style={{ borderColor: "rgba(152,37,152,0.3)" }}>
+                          <div className="flex flex-1 items-center justify-center p-3">
+                            <div className="w-full space-y-1.5">
+                              <div className="h-2 rounded-full bg-white/50" />
+                              <div className="h-2 w-4/5 rounded-full bg-white/30" />
+                              <div className="h-2 w-3/5 rounded-full bg-white/30" />
+                              <div className="mt-2 flex items-center gap-1.5">
+                                <div className="flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold text-white" style={{ background: "#982598" }}>✓</div>
+                                <div className="h-2 flex-1 rounded-full bg-white/20" />
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex justify-center pb-1">
+                            <div className="h-3 w-8 rounded-b bg-white/10" />
+                          </div>
+                        </div>
+                        <div className="mx-auto mt-1 h-2 w-16 rounded-full bg-white/10" />
+                      </div>
+
+                      {/* Stats badges */}
+                      <div className="flex flex-col gap-2">
+                        <div className="rounded-xl px-4 py-2 text-center" style={{ background: "rgba(152,37,152,0.15)" }}>
+                          <p className="text-xl font-black text-white">{(stageaireData.cours_list ?? []).length}</p>
+                          <p className="text-xs font-semibold text-white/60">Cours</p>
+                        </div>
+                        <div className="rounded-xl px-4 py-2 text-center" style={{ background: "rgba(152,37,152,0.15)" }}>
+                          <p className="text-xl font-black" style={{ color: "#982598" }}>{stageaireData.controls.available_count}</p>
+                          <p className="text-xs font-semibold text-white/60">Contrôles</p>
+                        </div>
+                        <div className="rounded-xl px-4 py-2 text-center" style={{ background: "rgba(152,37,152,0.15)" }}>
+                          <p className="text-xl font-black" style={{ color: "#982598" }}>{stageaireData.controls.submitted_count}</p>
+                          <p className="text-xs font-semibold text-white/60">Soumis</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 {/* Connexion card */}
                 <article className="rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
                   <div className="flex items-center gap-4">
                     <div
                       className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full text-xl font-bold text-white"
-                      style={{ background: "#25343F" }}
+                      style={{ background: "#15173D" }}
                     >
                       {user?.username?.[0]?.toUpperCase() ?? "?"}
                     </div>
@@ -1975,6 +2463,8 @@ function DashboardPage({
                             <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-app-accent/15 text-app-accent">
                               {n.type === "nouveau_cours" ? (
                                 <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
+                              ) : n.type === "correction_publiee" ? (
+                                <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                               ) : (
                                 <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
                               )}
@@ -2031,7 +2521,7 @@ function DashboardPage({
                           <p className="text-sm font-semibold leading-snug">{mat.nom}</p>
                           <span
                             className="mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold text-white"
-                            style={{ background: mat.cours_count > 0 ? "#25343F" : "#aaa" }}
+                            style={{ background: mat.cours_count > 0 ? "#15173D" : "#aaa" }}
                           >
                             {mat.cours_count} cours
                           </span>
@@ -2074,7 +2564,7 @@ function DashboardPage({
                             <p className="text-sm font-semibold leading-snug">{b.nom}</p>
                             <span
                               className="mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold text-white"
-                              style={{ background: b.cours_count > 0 ? "#25343F" : "#aaa" }}
+                              style={{ background: b.cours_count > 0 ? "#15173D" : "#aaa" }}
                             >
                               {b.cours_count} cours
                             </span>
@@ -2092,14 +2582,14 @@ function DashboardPage({
                         <div
                           className="cursor-pointer rounded-xl border border-app-muted bg-app-soft/50 p-4 transition-all hover:border-app-dark/40 hover:bg-app-soft hover:shadow-sm"
                           key={c.id}
-                          onClick={() => void handleOpenCours(c.id)}
+                          onClick={() => void openCoursModal(c.id)}
                         >
                           <p className="text-sm font-semibold leading-snug">{c.titre}</p>
                           {c.description ? <p className="mt-1 text-xs text-app-dark/60 line-clamp-2">{c.description}</p> : null}
                           <div className="mt-2 flex items-center justify-between gap-2">
                             <span className="text-xs text-app-dark/50">Instructeur: {c.instructeur}</span>
                             {c.controles_count > 0 && (
-                              <span className="rounded-full px-2 py-0.5 text-xs font-semibold text-white" style={{ background: "#FF9B51" }}>
+                              <span className="rounded-full px-2 py-0.5 text-xs font-semibold text-white" style={{ background: "#982598" }}>
                                 {c.controles_count} contrôle{c.controles_count > 1 ? "s" : ""}
                               </span>
                             )}
@@ -2135,14 +2625,14 @@ function DashboardPage({
                       <div
                         className="cursor-pointer rounded-xl border border-app-muted bg-app-soft/50 p-4 transition-all hover:border-app-dark/40 hover:bg-app-soft hover:shadow-sm"
                         key={c.id}
-                        onClick={() => void handleOpenCours(c.id)}
+                        onClick={() => void openCoursModal(c.id)}
                       >
                         <p className="text-sm font-semibold leading-snug">{c.titre}</p>
                         {c.description ? <p className="mt-1 text-xs text-app-dark/60 line-clamp-2">{c.description}</p> : null}
                         <div className="mt-2 flex items-center justify-between gap-2">
                           <span className="text-xs text-app-dark/50">Instructeur: {c.instructeur}</span>
                           {c.controles_count > 0 && (
-                            <span className="rounded-full px-2 py-0.5 text-xs font-semibold text-white" style={{ background: "#FF9B51" }}>
+                            <span className="rounded-full px-2 py-0.5 text-xs font-semibold text-white" style={{ background: "#982598" }}>
                               {c.controles_count} contrôle{c.controles_count > 1 ? "s" : ""}
                             </span>
                           )}
@@ -2167,13 +2657,18 @@ function DashboardPage({
                   >
                     ← Retour aux cours
                   </button>
-                  <h3 className="text-lg font-semibold truncate">{selectedCours.matiere}</h3>
+                  {selectedCours.matiere ? (
+                    <span className="text-sm text-app-dark/50">{selectedCours.matiere}</span>
+                  ) : null}
                 </div>
 
                 {/* Course meta */}
                 <article className="rounded-2xl border border-app-muted bg-white p-5 shadow-sm">
-                  {selectedCours.description ? <p className="text-sm text-app-dark/70">{selectedCours.description}</p> : null}
-                  <p className="mt-2 text-xs text-app-dark/50">Instructeur: <span className="font-semibold text-app-dark">{selectedCours.instructeur}</span> &mdash; Déposé le {selectedCours.date_depot}</p>
+                  <h2 className="text-xl font-bold text-app-dark">{selectedCours.titre}</h2>
+                  {selectedCours.description ? (
+                    <p className="mt-2 text-sm text-app-dark/70 whitespace-pre-wrap">{selectedCours.description}</p>
+                  ) : null}
+                  <p className="mt-3 text-xs text-app-dark/50">Instructeur : <span className="font-semibold text-app-dark">{selectedCours.instructeur}</span> &mdash; Déposé le {selectedCours.date_depot}</p>
                 </article>
 
                 {/* Course files — inline viewer */}
@@ -2211,7 +2706,9 @@ function DashboardPage({
                   );
                 })}
                 {selectedCours.fichiers.length === 0 && (
-                  <p className="text-sm text-app-dark/40 italic">Aucun fichier joint à ce cours.</p>
+                  <div className="rounded-xl border border-dashed border-app-muted bg-white p-6 text-center">
+                    <p className="text-sm text-app-dark/40 italic">Aucun fichier de cours disponible.</p>
+                  </div>
                 )}
 
                 {/* Contrôles */}
@@ -2245,35 +2742,27 @@ function DashboardPage({
                     {stageaireData.controls_list.map((control) => {
                       const submitted = stageaireData.submitted_control_ids.includes(control.id);
                       return (
-                        <div className="rounded border border-app-muted p-3" key={control.id}>
-                          <p className="text-sm font-semibold">{control.name}</p>
-                          <p className="text-xs text-app-dark/70">{control.cours}{control.deadline ? ` · Limite: ${new Date(control.deadline).toLocaleDateString("fr-FR")}` : ""}</p>
-                          {submitted ? (
-                            <p className="mt-1 text-xs font-semibold text-emerald-700">✓ Réponse déjà soumise.</p>
+                        <div className="rounded-lg border border-app-muted bg-white p-4" key={control.id}>
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="text-sm font-semibold text-app-dark">{control.name}</p>
+                            {submitted ? (
+                              <span className="shrink-0 rounded bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700">✓ Soumis</span>
+                            ) : (
+                              <span className="shrink-0 rounded bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">En attente</span>
+                            )}
+                          </div>
+                          <p className="mt-1 text-xs text-app-dark/60">
+                            Cours : <span className="font-medium">{control.cours}</span>
+                            {control.deadline ? ` · Limite : ${new Date(control.deadline).toLocaleDateString("fr-FR")}` : ""}
+                            {control.bareme ? ` · Barème : ${control.bareme} pts` : ""}
+                          </p>
+                          {control.enonce ? (
+                            <div className="mt-3 rounded bg-app-soft p-3">
+                              <p className="mb-1 text-xs font-semibold text-app-dark/60">Énoncé</p>
+                              <p className="whitespace-pre-wrap text-sm text-app-dark/80">{control.enonce}</p>
+                            </div>
                           ) : (
-                            <>
-                              <Input
-                                label="Commentaire (optionnel)"
-                                value={submissionAnswers[control.id] ?? ""}
-                                onChange={(v) => setSubmissionAnswers((prev) => ({ ...prev, [control.id]: v }))}
-                              />
-                              <label className="mt-2 grid gap-1 text-xs">
-                                Fichier réponse RTF
-                                <input
-                                  accept=".rtf,.doc,.docx,.pdf,application/rtf,text/rtf"
-                                  className="rounded border border-app-muted bg-white px-2 py-1 text-xs"
-                                  type="file"
-                                  onChange={(e) => {
-                                    const f = e.target.files?.[0];
-                                    if (f) setSubmissionFiles((prev) => ({ ...prev, [control.id]: f }));
-                                  }}
-                                />
-                                {submissionFiles[control.id] ? <span className="text-app-dark/60">{submissionFiles[control.id].name}</span> : null}
-                              </label>
-                              <button className="mt-2 rounded bg-app-dark px-3 py-1.5 text-xs text-white" type="button" onClick={() => void handleSubmitAnswer(control.id)}>
-                                Envoyer la réponse
-                              </button>
-                            </>
+                            <p className="mt-2 text-xs italic text-app-dark/40">Aucun énoncé fourni.</p>
                           )}
                         </div>
                       );
@@ -2332,35 +2821,38 @@ function DashboardPage({
                       ) : (
                         <p className="mt-2 text-xs text-app-dark/40 italic">Aucune correction publiée pour ce contrôle.</p>
                       )}
-                      {/* File attach area — shown when no file has been submitted yet */}
-                      {!s.has_fichier ? (
-                        <div className="mt-3 rounded border border-dashed border-app-muted bg-app-soft/50 p-3">
-                          <p className="mb-2 text-xs font-semibold text-app-dark/70">Ajouter un fichier réponse</p>
-                          <label className="grid gap-1 text-xs">
-                            <input
-                              accept=".rtf,.doc,.docx,.pdf,application/rtf,text/rtf"
-                              className="rounded border border-app-muted bg-white px-2 py-1 text-xs"
-                              type="file"
-                              onChange={(e) => {
-                                const f = e.target.files?.[0];
-                                if (f) setSubmissionFiles((prev) => ({ ...prev, [s.controle_id]: f }));
-                              }}
-                            />
-                            {submissionFiles[s.controle_id] ? (
-                              <span className="text-app-dark/60">{submissionFiles[s.controle_id].name}</span>
-                            ) : null}
-                          </label>
-                          {submissionFiles[s.controle_id] ? (
-                            <button
-                              className="mt-2 rounded bg-app-dark px-3 py-1.5 text-xs text-white"
-                              type="button"
-                              onClick={() => void handleSubmitAnswer(s.controle_id)}
-                            >
-                              Attacher le fichier
-                            </button>
-                          ) : null}
+                      {/* PDF file picker — always available */}
+                      <div className="mt-3 rounded border border-dashed border-app-muted bg-app-soft/50 p-3">
+                        <div className="mb-2 flex items-center gap-1.5">
+                          <svg className="h-3.5 w-3.5 text-red-500" fill="currentColor" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM6 20V4h5v7h7v9H6z"/></svg>
+                          <p className="text-xs font-semibold text-app-dark/70">
+                            {s.has_fichier ? "Remplacer le fichier PDF" : "Joindre un fichier PDF"}
+                          </p>
                         </div>
-                      ) : null}
+                        <label className="grid gap-1 text-xs">
+                          <input
+                            accept=".pdf,application/pdf"
+                            className="rounded border border-app-muted bg-white px-2 py-1 text-xs"
+                            type="file"
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              if (f) setSubmissionFiles((prev) => ({ ...prev, [s.controle_id]: f }));
+                            }}
+                          />
+                          {submissionFiles[s.controle_id] ? (
+                            <span className="text-app-dark/60">{submissionFiles[s.controle_id].name}</span>
+                          ) : null}
+                        </label>
+                        {submissionFiles[s.controle_id] ? (
+                          <button
+                            className="mt-2 rounded bg-app-dark px-3 py-1.5 text-xs text-white"
+                            type="button"
+                            onClick={() => void handleSubmitAnswer(s.controle_id)}
+                          >
+                            {s.has_fichier ? "Remplacer" : "Attacher le fichier"}
+                          </button>
+                        ) : null}
+                      </div>
                     </div>
                   ))}
                   {(stageaireData.soumissions_detail ?? []).length === 0 ? <EmptyState message="Vous n'avez encore soumis aucune réponse." /> : null}
@@ -2510,47 +3002,75 @@ function DashboardPage({
         <section className="mt-6 grid gap-5 md:grid-cols-[220px_1fr]">
           <aside className="sidebar-animated card-hover rounded-2xl border border-app-muted bg-white p-4 shadow-sm">
             <p className="text-xs font-semibold uppercase tracking-[0.12em] text-app-accent">{t("admin.panelTitle")}</p>
-            <div className="mt-3 grid gap-2">
-              <AdminNavButton active={adminView === "overview"} onClick={() => {
-                setAdminView("overview");
-                setSelectedAdminUser(null);
-              }}>
+            <div className="mt-3 grid gap-1">
+              <AdminNavButton active={adminView === "overview"} onClick={() => { setAdminView("overview"); setSelectedAdminUser(null); }}>
                 {t("admin.navOverview")}
               </AdminNavButton>
-              <AdminNavButton active={adminView === "users"} onClick={() => {
-                setAdminView("users");
-                setSelectedAdminUser(null);
-              }}>
-                {t("admin.navUsers")}
-              </AdminNavButton>
-              <AdminNavButton active={adminView === "accounts"} onClick={() => {
-                setAdminView("accounts");
-                setSelectedAdminUser(null);
-              }}>
+
+              {/* Users — collapsible */}
+              <div>
+                <button
+                  className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm font-medium transition ${adminView === "users" ? "bg-app-dark text-white" : "text-app-dark hover:bg-app-soft"}`}
+                  onClick={() => {
+                    setAdminUsersExpanded((v) => !v);
+                    setAdminView("users");
+                    setSelectedAdminUser(null);
+                    setAdminUserRoleFilter(null);
+                    setAdminUsersPage(1);
+                  }}
+                  type="button"
+                >
+                  <span>{t("admin.navUsers")}</span>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className={`h-3.5 w-3.5 transition-transform ${adminUsersExpanded ? "rotate-180" : ""}`}
+                    fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+
+                {adminUsersExpanded && (
+                  <div className="ml-3 mt-1 grid gap-0.5 border-l-2 border-app-muted pl-3">
+                    {(["Stagiaire", "Instructeur", "Superviseur", "Coordinateur", "Admin"] as const).map((role) => {
+                      const count = adminData.users.filter((u) => u.role === role).length;
+                      const isActive = adminView === "users" && adminUserRoleFilter === role;
+                      return (
+                        <button
+                          key={role}
+                          className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-xs font-medium transition ${isActive ? "bg-app-dark text-white" : "text-app-dark/70 hover:bg-app-soft"}`}
+                          onClick={() => {
+                            setAdminView("users");
+                            setSelectedAdminUser(null);
+                            setAdminUserRoleFilter(role);
+                            setAdminUsersPage(1);
+                          }}
+                          type="button"
+                        >
+                          <span>{role}s</span>
+                          <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${isActive ? "bg-white/20 text-white" : "bg-app-muted text-app-dark/60"}`}>
+                            {count}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <AdminNavButton active={adminView === "accounts"} onClick={() => { setAdminView("accounts"); setSelectedAdminUser(null); }}>
                 {t("admin.navAccounts")}
               </AdminNavButton>
-              <AdminNavButton active={adminView === "subjects"} onClick={() => {
-                setAdminView("subjects");
-                setSelectedAdminUser(null);
-              }}>
+              <AdminNavButton active={adminView === "subjects"} onClick={() => { setAdminView("subjects"); setSelectedAdminUser(null); }}>
                 {t("admin.navSubjects")}
               </AdminNavButton>
-              <AdminNavButton active={adminView === "classes"} onClick={() => {
-                setAdminView("classes");
-                setSelectedAdminUser(null);
-              }}>
+              <AdminNavButton active={adminView === "classes"} onClick={() => { setAdminView("classes"); setSelectedAdminUser(null); }}>
                 {t("admin.navClasses")}
               </AdminNavButton>
-              <AdminNavButton active={adminView === "references"} onClick={() => {
-                setAdminView("references");
-                setSelectedAdminUser(null);
-              }}>
+              <AdminNavButton active={adminView === "references"} onClick={() => { setAdminView("references"); setSelectedAdminUser(null); }}>
                 References
               </AdminNavButton>
-              <AdminNavButton active={adminView === "events"} onClick={() => {
-                setAdminView("events");
-                setSelectedAdminUser(null);
-              }}>
+              <AdminNavButton active={adminView === "events"} onClick={() => { setAdminView("events"); setSelectedAdminUser(null); }}>
                 Events
               </AdminNavButton>
             </div>
@@ -2558,59 +3078,319 @@ function DashboardPage({
 
           <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
             {adminView === "overview" ? (
-              <PanelSection title="Gestion de la plateforme">
-                <MetricGrid>
-                  <MetricCard label="Utilisateurs" value={adminData.platform.users_total} />
-                  <MetricCard label="Utilisateurs actifs" value={adminData.platform.users_active} />
-                  <MetricCard label="Cours" value={adminData.platform.cours_total} />
-                  <MetricCard label="Controles" value={adminData.platform.controles_total} />
-                  <MetricCard label="Soumissions" value={adminData.platform.soumissions_total} />
-                </MetricGrid>
-              </PanelSection>
+              <div className="grid gap-5">
+                <PanelSection title="Gestion de la plateforme">
+                  <MetricGrid>
+                    <MetricCard label="Utilisateurs" value={adminData.platform.users_total} />
+                    <MetricCard label="Utilisateurs actifs" value={adminData.platform.users_active} />
+                    <MetricCard label="Cours" value={adminData.platform.cours_total} />
+                    <MetricCard label="Controles" value={adminData.platform.controles_total} />
+                    <MetricCard label="Soumissions" value={adminData.platform.soumissions_total} />
+                  </MetricGrid>
+                </PanelSection>
+
+                {/* ── Statistiques rapides par rôle ── */}
+                <PanelSection title="Statistiques rapides">
+                  <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
+                    {(["Stagiaire", "Instructeur", "Superviseur", "Coordinateur", "Admin"] as const).map((role) => {
+                      const total = adminData.users.filter((u) => u.role === role).length;
+                      const active = adminData.users.filter((u) => u.role === role && u.is_active).length;
+                      return (
+                        <button
+                          key={role}
+                          type="button"
+                          onClick={() => { setAdminView("users"); setSelectedAdminUser(null); setAdminUserRoleFilter(role); setAdminUsersExpanded(true); setAdminUsersPage(1); }}
+                          className="rounded-xl border border-app-muted bg-app-soft p-4 text-left transition hover:border-app-dark hover:shadow-sm"
+                        >
+                          <p className="text-3xl font-black text-app-dark">{total}</p>
+                          <p className="mt-1 text-xs font-semibold text-app-dark/60">{role}s</p>
+                          <p className="mt-0.5 text-[10px] text-app-dark/40">{active} actif{active !== 1 ? "s" : ""}</p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </PanelSection>
+              </div>
             ) : null}
 
             {adminView === "users" && !selectedAdminUser ? (
               <PanelSection title="Utilisateurs">
-                <div className="mt-3 overflow-x-auto">
-                  <table className="min-w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-app-muted text-left">
-                        <th className="py-2">Username</th>
-                        <th className="py-2">Role</th>
-                        <th className="py-2">Status</th>
-                        <th className="py-2">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {adminData.users.map((u) => (
-                        <tr className="border-b border-app-muted/40" key={u.id}>
-                          <td className="py-2">
-                            <button className="text-left text-app-dark underline-offset-2 hover:underline" onClick={() => setSelectedAdminUser(u)} type="button">
-                              {u.username}
-                            </button>
-                          </td>
-                          <td className="py-2">{u.role}</td>
-                          <td className="py-2">{u.is_active ? "Actif" : "Inactif"}</td>
-                          <td className="py-2">
-                            <button
-                              className="rounded bg-app-dark px-2 py-1 text-xs text-white disabled:opacity-50"
-                              disabled={u.id === user.id}
-                              onClick={() => void handleToggleUserStatus(u.id)}
-                              type="button"
-                            >
-                              {u.is_active ? "Desactiver" : "Activer"}
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                      {adminData.users.length === 0 ? (
-                        <tr>
-                          <td className="py-2 text-sm text-app-dark/70" colSpan={4}>Aucun utilisateur trouve.</td>
-                        </tr>
-                      ) : null}
-                    </tbody>
-                  </table>
+
+                {/* ── Actions de masse ── */}
+                <div className="mt-3 rounded-xl border border-app-muted bg-app-soft px-4 py-3">
+                  <p className="mb-2 text-xs font-bold uppercase tracking-wide text-app-dark/50">Actions de masse</p>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className="rounded-lg border border-app-muted bg-white px-3 py-1.5 text-xs font-semibold text-app-dark transition hover:bg-green-50 hover:border-green-300 hover:text-green-700"
+                      onClick={async () => {
+                        const targets = adminData.users.filter((u) => !u.is_active && (!adminUserRoleFilter || u.role === adminUserRoleFilter));
+                        await Promise.all(targets.map((u) => apiFetch(`/api/admin/users/${u.id}/toggle-active/`, { method: "POST" })));
+                        await loadDashboard();
+                      }}
+                    >
+                      ✓ Activer tous {adminUserRoleFilter ? `les ${adminUserRoleFilter}s` : ""}
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-lg border border-app-muted bg-white px-3 py-1.5 text-xs font-semibold text-app-dark transition hover:bg-red-50 hover:border-red-300 hover:text-red-700"
+                      onClick={async () => {
+                        const targets = adminData.users.filter((u) => u.is_active && u.id !== user.id && (!adminUserRoleFilter || u.role === adminUserRoleFilter));
+                        await Promise.all(targets.map((u) => apiFetch(`/api/admin/users/${u.id}/toggle-active/`, { method: "POST" })));
+                        await loadDashboard();
+                      }}
+                    >
+                      ✕ Désactiver tous {adminUserRoleFilter ? `les ${adminUserRoleFilter}s` : ""}
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-lg border border-app-muted bg-white px-3 py-1.5 text-xs font-semibold text-app-dark transition hover:bg-app-soft"
+                      onClick={() => {
+                        const rows = adminData.users
+                          .filter((u) => !adminUserRoleFilter || u.role === adminUserRoleFilter)
+                          .map((u) => `${u.username},${u.email ?? ""},${u.role},${u.is_active ? "Actif" : "Inactif"}`);
+                        const csv = ["Username,Email,Role,Statut", ...rows].join("\n");
+                        const blob = new Blob([csv], { type: "text/csv" });
+                        const a = document.createElement("a");
+                        a.href = URL.createObjectURL(blob);
+                        a.download = `utilisateurs${adminUserRoleFilter ? `_${adminUserRoleFilter}` : ""}.csv`;
+                        a.click();
+                      }}
+                    >
+                      ↓ Exporter CSV
+                    </button>
+                  </div>
                 </div>
+
+                {/* Search */}
+                <div className="mt-3 flex items-center gap-2 rounded-lg border border-app-muted bg-app-soft px-3 py-2">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 shrink-0 text-app-dark/40" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+                  </svg>
+                  <input
+                    className="w-full bg-transparent text-sm outline-none placeholder:text-app-dark/40"
+                    placeholder="Rechercher par username, email ou rôle…"
+                    value={adminUserSearch}
+                    onChange={(e) => { setAdminUserSearch(e.target.value); setAdminUsersPage(1); }}
+                  />
+                  {adminUserSearch ? (
+                    <button className="text-app-dark/40 hover:text-app-dark" onClick={() => { setAdminUserSearch(""); setAdminUsersPage(1); }} type="button">✕</button>
+                  ) : null}
+                </div>
+
+                {/* ── Filtres avancés ── */}
+                <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl border border-app-muted bg-app-soft px-4 py-3">
+                  <p className="text-xs font-bold uppercase tracking-wide text-app-dark/50">Filtres avancés</p>
+                  {/* Status filter */}
+                  <div className="flex items-center gap-1 rounded-lg border border-app-muted bg-white p-0.5">
+                    {(["tous", "actif", "inactif"] as const).map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        className={`rounded px-3 py-1 text-xs font-semibold transition ${adminStatusFilter === s ? "text-white" : "text-app-dark/60 hover:bg-app-soft"}`}
+                        style={adminStatusFilter === s ? { background: "#15173D" } : {}}
+                        onClick={() => { setAdminStatusFilter(s); setAdminUsersPage(1); }}
+                      >
+                        {s === "tous" ? "Tous" : s === "actif" ? "Actifs" : "Inactifs"}
+                      </button>
+                    ))}
+                  </div>
+                  {/* Sort */}
+                  <div className="flex items-center gap-1.5 ml-auto">
+                    <span className="text-xs text-app-dark/50">Trier :</span>
+                    <select
+                      className="rounded-lg border border-app-muted bg-white px-2 py-1 text-xs text-app-dark outline-none"
+                      value={adminUserSort}
+                      onChange={(e) => { setAdminUserSort(e.target.value as "az" | "za" | "recent"); setAdminUsersPage(1); }}
+                    >
+                      <option value="az">A → Z</option>
+                      <option value="za">Z → A</option>
+                      <option value="recent">Plus récents</option>
+                    </select>
+                  </div>
+                  {/* Reset */}
+                  {(adminStatusFilter !== "tous" || adminUserSort !== "az") && (
+                    <button
+                      type="button"
+                      className="text-xs text-app-accent underline"
+                      onClick={() => { setAdminStatusFilter("tous"); setAdminUserSort("az"); setAdminUsersPage(1); }}
+                    >
+                      Réinitialiser
+                    </button>
+                  )}
+                </div>
+
+                {adminData.users.length === 0 && (
+                  <p className="mt-3 text-sm text-app-dark/70">Aucun utilisateur trouvé.</p>
+                )}
+
+                {/* Role groups with pagination */}
+                {(() => {
+                  // Build the full filtered+sorted list across all roles
+                  const allFiltered = adminData.users.filter((u) => {
+                    if (adminUserRoleFilter && u.role !== adminUserRoleFilter) return false;
+                    if (adminStatusFilter === "actif" && !u.is_active) return false;
+                    if (adminStatusFilter === "inactif" && u.is_active) return false;
+                    if (adminUserSearch) {
+                      const q = adminUserSearch.toLowerCase();
+                      if (!u.username.toLowerCase().includes(q) && !(u.email ?? "").toLowerCase().includes(q)) return false;
+                    }
+                    return true;
+                  }).sort((a, b) => {
+                    if (adminUserSort === "za") return b.username.localeCompare(a.username);
+                    if (adminUserSort === "recent") return b.id - a.id;
+                    return a.username.localeCompare(b.username);
+                  });
+
+                  const totalFiltered = allFiltered.length;
+                  const totalPages = Math.max(1, Math.ceil(totalFiltered / ADMIN_USERS_PER_PAGE));
+                  const safePage = Math.min(adminUsersPage, totalPages);
+                  const pageStart = (safePage - 1) * ADMIN_USERS_PER_PAGE;
+                  const pageEnd = pageStart + ADMIN_USERS_PER_PAGE;
+                  const pageUsers = allFiltered.slice(pageStart, pageEnd);
+
+                  // Group page users by role
+                  const roleOrder = ["Stagiaire", "Instructeur", "Superviseur", "Coordinateur", "Admin"];
+                  const groups: Record<string, typeof pageUsers> = {};
+                  for (const rg of roleOrder) groups[rg] = pageUsers.filter((u) => u.role === rg);
+
+                  return (
+                    <>
+                      {/* Summary bar */}
+                      <div className="mt-3 flex items-center justify-between text-xs text-app-dark/50">
+                        <span>
+                          {totalFiltered === 0
+                            ? "Aucun résultat"
+                            : `Affichage ${pageStart + 1}–${Math.min(pageEnd, totalFiltered)} sur ${totalFiltered} utilisateur${totalFiltered > 1 ? "s" : ""}`}
+                        </span>
+                        {adminUserSearch && totalFiltered === 0 && (
+                          <span className="text-app-dark/40">Aucun résultat pour « {adminUserSearch} »</span>
+                        )}
+                      </div>
+
+                      <div className="mt-3 grid gap-5">
+                        {roleOrder.filter((rg) => groups[rg].length > 0).map((roleGroup) => (
+                          <div key={roleGroup} className="overflow-hidden rounded-xl border border-app-muted">
+                            {/* Group header */}
+                            <div className="flex items-center justify-between px-4 py-2.5 text-white" style={{ background: "#15173D" }}>
+                              <span className="text-sm font-bold uppercase tracking-wide">{roleGroup}s</span>
+                              <span className="rounded-full bg-white/20 px-2.5 py-0.5 text-xs font-bold">{groups[roleGroup].length}</span>
+                            </div>
+                            {/* User rows */}
+                            <div className="divide-y divide-app-muted/50 bg-white">
+                              {groups[roleGroup].map((u) => {
+                                const rps = resetPasswordState[u.id] ?? { value: "", show: false, saved: "" };
+                                return (
+                                  <div key={u.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
+                                    {/* Avatar */}
+                                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white" style={{ background: "#15173D" }}>
+                                      {u.username[0]?.toUpperCase()}
+                                    </div>
+                                    {/* Info */}
+                                    <div className="min-w-0 flex-1">
+                                      <p className="truncate text-sm font-semibold text-app-dark">{u.username}</p>
+                                      <p className="truncate text-xs text-app-dark/50">{u.email || "—"}</p>
+                                    </div>
+                                    {/* Status */}
+                                    <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ${u.is_active ? "bg-green-100 text-green-700" : "bg-red-100 text-red-600"}`}>
+                                      {u.is_active ? "Actif" : "Inactif"}
+                                    </span>
+                                    {/* Password saved badge */}
+                                    {rps.saved && (
+                                      <span className="flex items-center gap-1 rounded bg-green-50 px-2 py-0.5 font-mono text-xs text-green-800">
+                                        {rps.saved}
+                                        <button className="text-green-600 hover:text-green-800" onClick={() => navigator.clipboard.writeText(rps.saved)} type="button">⎘</button>
+                                      </span>
+                                    )}
+                                    {/* Password reset inline */}
+                                    <div className="flex items-center gap-1">
+                                      <div className="relative flex items-center">
+                                        <input
+                                          className="w-32 rounded border border-app-muted px-2 py-1 pr-6 font-mono text-xs outline-none focus:border-app-accent"
+                                          placeholder="Nouveau mdp"
+                                          type={rps.show ? "text" : "password"}
+                                          value={rps.value}
+                                          onChange={(e) => setResetPasswordState((prev) => ({ ...prev, [u.id]: { ...rps, value: e.target.value } }))}
+                                        />
+                                        <button
+                                          className="absolute right-1 text-app-dark/40 hover:text-app-dark"
+                                          onClick={() => setResetPasswordState((prev) => ({ ...prev, [u.id]: { ...rps, show: !rps.show } }))}
+                                          type="button"
+                                        >
+                                          <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={rps.show ? "M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" : "M15 12a3 3 0 11-6 0 3 3 0 016 0zM2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"} />
+                                          </svg>
+                                        </button>
+                                      </div>
+                                      <button
+                                        className="rounded bg-app-accent px-2 py-1 text-xs text-white disabled:opacity-40"
+                                        disabled={!rps.value}
+                                        onClick={async () => {
+                                          await apiFetch(`/api/admin/users/${u.id}/reset-password/`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: rps.value }) });
+                                          setResetPasswordState((prev) => ({ ...prev, [u.id]: { value: "", show: false, saved: rps.value } }));
+                                        }}
+                                        type="button"
+                                      >
+                                        ✓
+                                      </button>
+                                    </div>
+                                    {/* Toggle active */}
+                                    <button
+                                      className="shrink-0 rounded bg-app-dark px-2 py-1 text-xs text-white disabled:opacity-40"
+                                      disabled={u.id === user.id}
+                                      onClick={() => void handleToggleUserStatus(u.id)}
+                                      type="button"
+                                    >
+                                      {u.is_active ? "Désactiver" : "Activer"}
+                                    </button>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                        {totalFiltered === 0 && adminData.users.length > 0 && (
+                          <p className="py-6 text-center text-sm text-app-dark/50">Aucun résultat avec ces filtres.</p>
+                        )}
+                      </div>
+
+                      {/* ── Pagination ── */}
+                      {totalPages > 1 && (
+                        <div className="mt-5 flex items-center justify-between gap-2">
+                          <button
+                            type="button"
+                            disabled={safePage <= 1}
+                            className="rounded-lg border border-app-muted bg-white px-3 py-1.5 text-xs font-semibold text-app-dark transition hover:bg-app-soft disabled:opacity-40"
+                            onClick={() => setAdminUsersPage((p) => Math.max(1, p - 1))}
+                          >
+                            ← Précédent
+                          </button>
+                          <div className="flex items-center gap-1">
+                            {Array.from({ length: totalPages }, (_, i) => i + 1).map((pg) => (
+                              <button
+                                key={pg}
+                                type="button"
+                                className={`h-7 w-7 rounded text-xs font-semibold transition ${safePage === pg ? "text-white" : "text-app-dark/60 hover:bg-app-soft"}`}
+                                style={safePage === pg ? { background: "#982598" } : {}}
+                                onClick={() => setAdminUsersPage(pg)}
+                              >
+                                {pg}
+                              </button>
+                            ))}
+                          </div>
+                          <button
+                            type="button"
+                            disabled={safePage >= totalPages}
+                            className="rounded-lg border border-app-muted bg-white px-3 py-1.5 text-xs font-semibold text-app-dark transition hover:bg-app-soft disabled:opacity-40"
+                            onClick={() => setAdminUsersPage((p) => Math.min(totalPages, p + 1))}
+                          >
+                            Suivant →
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
               </PanelSection>
             ) : null}
 
@@ -2656,11 +3436,37 @@ function DashboardPage({
                       value={accountForm.email}
                       onChange={(value) => setAccountForm((prev) => ({ ...prev, email: value }))}
                     />
-                    <Input
+                    <TextField
+                      fullWidth
                       label="Password"
-                      type="password"
+                      required
+                      size="small"
+                      type={showAccountPassword ? "text" : "password"}
                       value={accountForm.password}
-                      onChange={(value) => setAccountForm((prev) => ({ ...prev, password: value }))}
+                      variant="outlined"
+                      onChange={(e) => setAccountForm((prev) => ({ ...prev, password: e.target.value }))}
+                      InputProps={{
+                        endAdornment: (
+                          <InputAdornment position="end">
+                            <button
+                              type="button"
+                              className="text-app-dark/50 hover:text-app-dark"
+                              onClick={() => setShowAccountPassword((v) => !v)}
+                            >
+                              {showAccountPassword ? (
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                                </svg>
+                              ) : (
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                </svg>
+                              )}
+                            </button>
+                          </InputAdornment>
+                        ),
+                      }}
                     />
                     <label className="grid gap-1 text-sm font-medium text-app-dark">
                       Role
@@ -2761,6 +3567,41 @@ function DashboardPage({
                     </button>
                   </form>
                 </SubCard>
+
+                {lastCreatedAccount && (
+                  <div className="rounded-lg border-2 border-green-400 bg-green-50 p-4">
+                    <div className="mb-3 flex items-center justify-between">
+                      <h3 className="font-semibold text-green-800">Compte créé avec succès</h3>
+                      <button
+                        className="text-green-600 hover:text-green-800"
+                        onClick={() => setLastCreatedAccount(null)}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    <div className="grid gap-2 text-sm">
+                      {[
+                        { label: "Username", value: lastCreatedAccount.username },
+                        { label: "Mot de passe", value: lastCreatedAccount.password },
+                        { label: "Rôle", value: lastCreatedAccount.role },
+                        { label: "Matricule", value: lastCreatedAccount.matricule },
+                      ].map(({ label, value }) => (
+                        <div key={label} className="flex items-center justify-between rounded bg-white px-3 py-2">
+                          <span className="font-medium text-green-700">{label}:</span>
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-green-900">{value}</span>
+                            <button
+                              className="rounded bg-green-200 px-2 py-0.5 text-xs text-green-800 hover:bg-green-300"
+                              onClick={() => navigator.clipboard.writeText(value)}
+                            >
+                              Copier
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <SubCard title="Import CSV (bulk)">
                   <p className="mt-1 text-xs text-app-dark/70">
@@ -2893,8 +3734,28 @@ function DashboardPage({
                             </select>
                           </label>
                         </div>
+                        <div className="flex items-center gap-2 rounded-lg border border-app-muted bg-app-soft px-3 py-2">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 shrink-0 text-app-dark/40" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+                          </svg>
+                          <input
+                            className="w-full bg-transparent text-sm outline-none placeholder:text-app-dark/40"
+                            placeholder="Rechercher un contrôle…"
+                            value={adminControlSearch}
+                            onChange={(e) => setAdminControlSearch(e.target.value)}
+                          />
+                          {adminControlSearch ? (
+                            <button className="text-app-dark/40 hover:text-app-dark" onClick={() => setAdminControlSearch("")} type="button">✕</button>
+                          ) : null}
+                        </div>
                         <div className="mt-3 space-y-2">
-                          {subjectControls.map((control) => (
+                          {subjectControls
+                            .filter((control) =>
+                              control.name.toLowerCase().includes(adminControlSearch.toLowerCase()) ||
+                              control.cours_title.toLowerCase().includes(adminControlSearch.toLowerCase()) ||
+                              control.instructeur_username.toLowerCase().includes(adminControlSearch.toLowerCase())
+                            )
+                            .map((control) => (
                             <div className="rounded border border-app-muted/60 p-3" key={control.id}>
                               <p className="text-sm font-semibold">{control.name}</p>
                               <p className="text-xs text-app-dark/70">{control.cours_title} - {control.instructeur_username}</p>
@@ -2913,6 +3774,9 @@ function DashboardPage({
                             </div>
                           ))}
                           {selectedSubjectId && subjectControls.length === 0 ? <EmptyState message="Aucun controle pour ce sujet." /> : null}
+                          {subjectControls.length > 0 && adminControlSearch && subjectControls.filter((c) => c.name.toLowerCase().includes(adminControlSearch.toLowerCase()) || c.cours_title.toLowerCase().includes(adminControlSearch.toLowerCase()) || c.instructeur_username.toLowerCase().includes(adminControlSearch.toLowerCase())).length === 0 ? (
+                            <p className="text-sm text-app-dark/50">Aucun résultat pour « {adminControlSearch} ».</p>
+                          ) : null}
                         </div>
                       </SubCard>
                     ) : null}
@@ -2937,8 +3801,27 @@ function DashboardPage({
                             </select>
                           </label>
                         </div>
+                        <div className="flex items-center gap-2 rounded-lg border border-app-muted bg-app-soft px-3 py-2">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 shrink-0 text-app-dark/40" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+                          </svg>
+                          <input
+                            className="w-full bg-transparent text-sm outline-none placeholder:text-app-dark/40"
+                            placeholder="Rechercher un cours…"
+                            value={adminCoursSearch}
+                            onChange={(e) => setAdminCoursSearch(e.target.value)}
+                          />
+                          {adminCoursSearch ? (
+                            <button className="text-app-dark/40 hover:text-app-dark" onClick={() => setAdminCoursSearch("")} type="button">✕</button>
+                          ) : null}
+                        </div>
                         <div className="mt-3 space-y-2">
-                          {subjectCourses.map((course) => (
+                          {subjectCourses
+                            .filter((course) =>
+                              course.title.toLowerCase().includes(adminCoursSearch.toLowerCase()) ||
+                              course.instructeur_username.toLowerCase().includes(adminCoursSearch.toLowerCase())
+                            )
+                            .map((course) => (
                             <div className="rounded border border-app-muted/60 p-3" key={course.id}>
                               <p className="text-sm font-semibold">{course.title}</p>
                               <p className="text-xs text-app-dark/70">{course.instructeur_username}</p>
@@ -2957,6 +3840,9 @@ function DashboardPage({
                             </div>
                           ))}
                           {selectedSubjectId && subjectCourses.length === 0 ? <EmptyState message="Aucun cours pour ce sujet." /> : null}
+                          {subjectCourses.length > 0 && adminCoursSearch && subjectCourses.filter((c) => c.title.toLowerCase().includes(adminCoursSearch.toLowerCase()) || c.instructeur_username.toLowerCase().includes(adminCoursSearch.toLowerCase())).length === 0 ? (
+                            <p className="text-sm text-app-dark/50">Aucun résultat pour « {adminCoursSearch} ».</p>
+                          ) : null}
                         </div>
                       </SubCard>
                     ) : null}
@@ -3037,114 +3923,355 @@ function DashboardPage({
 
             {adminView === "classes" ? (
               <div className="grid gap-6">
-                <SubCard title="Creer une classe">
-                  <form className="mt-3 grid gap-3 md:grid-cols-2" onSubmit={handleCreateClass}>
-                    <Input
-                      label="Code classe"
-                      value={newClassForm.code_classe}
-                      onChange={(value) => setNewClassForm((prev) => ({ ...prev, code_classe: value }))}
-                    />
-                    <Input
-                      label="Libelle classe"
+
+                {/* ── Créer une classe ── */}
+                <div className="overflow-hidden rounded-2xl border border-app-muted bg-white shadow-sm">
+                  <div className="flex items-center gap-3 border-b border-app-muted px-5 py-4" style={{ background: "#15173D" }}>
+                    <span className="text-base font-bold text-white">Créer une classe</span>
+                  </div>
+                  <form className="flex gap-3 p-5" onSubmit={handleCreateClass}>
+                    <input
+                      className="flex-1 rounded-xl border border-app-muted bg-app-soft px-4 py-2.5 text-sm outline-none focus:border-app-accent focus:ring-2 focus:ring-app-accent/20"
+                      placeholder="Nom de la classe (ex : Classe Alpha)"
                       value={newClassForm.libelle}
-                      onChange={(value) => setNewClassForm((prev) => ({ ...prev, libelle: value }))}
+                      onChange={(e) => setNewClassForm({ libelle: e.target.value })}
                     />
-                    <Input
-                      label="Code brigade"
-                      value={newClassForm.brigade_code}
-                      onChange={(value) => setNewClassForm((prev) => ({ ...prev, brigade_code: value }))}
-                    />
-                    <Input
-                      label="Libelle brigade"
-                      value={newClassForm.brigade_label}
-                      onChange={(value) => setNewClassForm((prev) => ({ ...prev, brigade_label: value }))}
-                    />
-                    <button className="rounded bg-app-dark px-3 py-2 text-sm font-semibold text-white md:col-span-2" type="submit">
-                      Creer classe
+                    <button
+                      className="rounded-xl px-5 py-2.5 text-sm font-bold text-white transition hover:opacity-90 disabled:opacity-40"
+                      style={{ background: "#982598" }}
+                      type="submit"
+                      disabled={!newClassForm.libelle.trim()}
+                    >
+                      + Créer
                     </button>
                   </form>
-                </SubCard>
+                </div>
 
-                <SubCard title="Gestion des affectations">
-                  <div className="mt-3 grid gap-3 md:grid-cols-3">
-                    <label className="grid gap-1 text-sm font-medium text-app-dark">
-                      Classe
-                      <select
-                        className="rounded border border-app-muted bg-white px-3 py-2"
-                        value={selectedClassId}
-                        onChange={(event) => setSelectedClassId(event.target.value)}
-                      >
-                        <option value="">Selectionner une classe</option>
-                        {classesData.map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.code} ({c.brigade.code})
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-
-                    <label className="grid gap-1 text-sm font-medium text-app-dark">
-                      Assigner Stagiaire
-                      <select
-                        className="rounded border border-app-muted bg-white px-3 py-2"
-                        value={selectedStageaireId}
-                        onChange={(event) => setSelectedStageaireId(event.target.value)}
-                      >
-                        <option value="">Selectionner</option>
-                        {adminData.users
-                          .filter((u) => u.role === "Stagiaire")
-                          .map((u) => (
-                            <option key={u.id} value={u.id}>
-                              {u.username}
-                            </option>
-                          ))}
-                      </select>
-                    </label>
-
-                    <button className="self-end rounded bg-app-dark px-3 py-2 text-sm font-semibold text-white" onClick={() => void handleAssignStageaireToClass()} type="button">
-                      Assigner stageaire
-                    </button>
-
-                    <label className="grid gap-1 text-sm font-medium text-app-dark">
-                      Assigner Instructeur
-                      <select
-                        className="rounded border border-app-muted bg-white px-3 py-2"
-                        value={selectedInstructeurId}
-                        onChange={(event) => setSelectedInstructeurId(event.target.value)}
-                      >
-                        <option value="">Selectionner</option>
-                        {adminData.users
-                          .filter((u) => u.role === "Instructeur")
-                          .map((u) => (
-                            <option key={u.id} value={u.id}>
-                              {u.username}
-                            </option>
-                          ))}
-                      </select>
-                    </label>
-
-                    <button className="self-end rounded bg-app-dark px-3 py-2 text-sm font-semibold text-white" onClick={() => void handleAssignInstructeurToClass()} type="button">
-                      Assigner instructeur
-                    </button>
+                {/* ── Gestion des affectations ── */}
+                <div className="overflow-hidden rounded-2xl border border-app-muted bg-white shadow-sm">
+                  <div className="flex items-center gap-3 border-b border-app-muted px-5 py-4" style={{ background: "#15173D" }}>
+                    <span className="text-base font-bold text-white">Gestion des affectations</span>
+                    {selectedClassId && (
+                      <span className="ml-auto rounded-full bg-white/20 px-3 py-0.5 text-xs font-semibold text-white">
+                        {classesData.find((c) => c.id === selectedClassId)?.code ?? ""}
+                      </span>
+                    )}
                   </div>
+                  <div className="p-5 grid gap-5">
 
-                  <div className="mt-4 space-y-3">
+                    {/* Class pill selector */}
+                    <div>
+                      <p className="mb-2 text-xs font-bold uppercase tracking-wide text-app-dark/50">Sélectionner une classe</p>
+                      {classesData.length === 0 ? (
+                        <p className="text-sm text-app-dark/40">Aucune classe créée.</p>
+                      ) : (
+                        <div className="flex flex-wrap gap-2">
+                          {classesData.map((c) => {
+                            const isSelected = selectedClassId === c.id;
+                            return (
+                              <button
+                                key={c.id}
+                                type="button"
+                                onClick={() => setSelectedClassId(c.id)}
+                                className="flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold transition"
+                                style={
+                                  isSelected
+                                    ? { background: "#15173D", borderColor: "#15173D", color: "white" }
+                                    : { background: "#F1E9E9", borderColor: "#E491C9", color: "#15173D" }
+                                }
+                              >
+                                <span>{c.code}</span>
+                                <span className="rounded-full px-1.5 py-0.5 text-[10px] font-bold" style={isSelected ? { background: "rgba(255,255,255,0.2)" } : { background: "#E491C9", color: "#15173D" }}>
+                                  {c.brigade.code}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Two columns: Stagiaires | Instructeurs */}
+                    <div className="grid gap-4 md:grid-cols-2">
+
+                      {/* ── Stagiaires multi-select ── */}
+                      {(() => {
+                        const allStags = adminData.users.filter((u) => u.role === "Stagiaire");
+                        const filteredStags = allStags.filter((u) => u.username.toLowerCase().includes(stagSearch.toLowerCase()));
+                        const allChecked = filteredStags.length > 0 && filteredStags.every((u) => selectedStageaireIds.includes(u.id));
+                        return (
+                          <div className="flex flex-col rounded-xl border border-app-muted overflow-hidden">
+                            {/* Header */}
+                            <div className="flex items-center justify-between px-4 py-3 border-b border-app-muted" style={{ background: "#F1E9E9" }}>
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-bold text-app-dark">Stagiaires</span>
+                                <span className="rounded-full bg-app-accent px-2 py-0.5 text-[10px] font-bold text-white">{selectedStageaireIds.length}/{allStags.length}</span>
+                              </div>
+                              <button
+                                type="button"
+                                className="text-xs font-semibold text-app-accent"
+                                onClick={() =>
+                                  allChecked
+                                    ? setSelectedStageaireIds((prev) => prev.filter((id) => !filteredStags.some((u) => u.id === id)))
+                                    : setSelectedStageaireIds((prev) => [...new Set([...prev, ...filteredStags.map((u) => u.id)])])
+                                }
+                              >
+                                {allChecked ? "Désélectionner tout" : "Tout sélectionner"}
+                              </button>
+                            </div>
+                            {/* Search */}
+                            <div className="flex items-center gap-2 border-b border-app-muted px-3 py-2 bg-white">
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 shrink-0 text-app-dark/30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+                              </svg>
+                              <input
+                                className="w-full bg-transparent text-xs outline-none placeholder:text-app-dark/30"
+                                placeholder="Rechercher stagiaire…"
+                                value={stagSearch}
+                                onChange={(e) => setStagSearch(e.target.value)}
+                              />
+                              {stagSearch && <button type="button" className="text-app-dark/30 hover:text-app-dark text-xs" onClick={() => setStagSearch("")}>✕</button>}
+                            </div>
+                            {/* List */}
+                            <div className="max-h-52 overflow-y-auto bg-white divide-y divide-app-muted/30">
+                              {filteredStags.length === 0 && <p className="px-4 py-3 text-xs text-app-dark/40">Aucun stagiaire{stagSearch ? ` pour « ${stagSearch} »` : ""}.</p>}
+                              {filteredStags.map((u) => {
+                                const checked = selectedStageaireIds.includes(u.id);
+                                return (
+                                  <label key={u.id} className={`flex cursor-pointer items-center gap-3 px-4 py-2.5 transition ${checked ? "bg-app-soft" : "hover:bg-app-soft/60"}`}>
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      className="h-4 w-4 rounded accent-app-accent"
+                                      onChange={() => setSelectedStageaireIds((prev) => checked ? prev.filter((id) => id !== u.id) : [...prev, u.id])}
+                                    />
+                                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white" style={{ background: "#982598" }}>
+                                      {u.username[0]?.toUpperCase()}
+                                    </div>
+                                    <span className="flex-1 text-xs font-medium text-app-dark">{u.username}</span>
+                                    <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${u.is_active ? "bg-green-100 text-green-700" : "bg-red-100 text-red-500"}`}>
+                                      {u.is_active ? "Actif" : "Inactif"}
+                                    </span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                            {/* Footer */}
+                            <div className="border-t border-app-muted px-4 py-3 bg-white">
+                              <button
+                                type="button"
+                                className="w-full rounded-lg py-2 text-sm font-bold text-white transition disabled:opacity-40"
+                                style={{ background: "#982598" }}
+                                disabled={selectedStageaireIds.length === 0 || !selectedClassId}
+                                onClick={() => void handleAssignStageaireToClass()}
+                              >
+                                Assigner {selectedStageaireIds.length > 0 ? `${selectedStageaireIds.length} stagiaire(s)` : "stagiaires"}
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })()}
+
+                      {/* ── Instructeurs multi-select ── */}
+                      {(() => {
+                        const allInstrs = adminData.users.filter((u) => u.role === "Instructeur");
+                        const filteredInstrs = allInstrs.filter((u) => u.username.toLowerCase().includes(instrSearch.toLowerCase()));
+                        const allChecked = filteredInstrs.length > 0 && filteredInstrs.every((u) => selectedInstructeurIds.includes(u.id));
+                        return (
+                          <div className="flex flex-col rounded-xl border border-app-muted overflow-hidden">
+                            {/* Header */}
+                            <div className="flex items-center justify-between px-4 py-3 border-b border-app-muted" style={{ background: "#F1E9E9" }}>
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-bold text-app-dark">Instructeurs</span>
+                                <span className="rounded-full bg-app-accent px-2 py-0.5 text-[10px] font-bold text-white">{selectedInstructeurIds.length}/{allInstrs.length}</span>
+                              </div>
+                              <button
+                                type="button"
+                                className="text-xs font-semibold text-app-accent"
+                                onClick={() =>
+                                  allChecked
+                                    ? setSelectedInstructeurIds((prev) => prev.filter((id) => !filteredInstrs.some((u) => u.id === id)))
+                                    : setSelectedInstructeurIds((prev) => [...new Set([...prev, ...filteredInstrs.map((u) => u.id)])])
+                                }
+                              >
+                                {allChecked ? "Désélectionner tout" : "Tout sélectionner"}
+                              </button>
+                            </div>
+                            {/* Search */}
+                            <div className="flex items-center gap-2 border-b border-app-muted px-3 py-2 bg-white">
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 shrink-0 text-app-dark/30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+                              </svg>
+                              <input
+                                className="w-full bg-transparent text-xs outline-none placeholder:text-app-dark/30"
+                                placeholder="Rechercher instructeur…"
+                                value={instrSearch}
+                                onChange={(e) => setInstrSearch(e.target.value)}
+                              />
+                              {instrSearch && <button type="button" className="text-app-dark/30 hover:text-app-dark text-xs" onClick={() => setInstrSearch("")}>✕</button>}
+                            </div>
+                            {/* List */}
+                            <div className="max-h-52 overflow-y-auto bg-white divide-y divide-app-muted/30">
+                              {filteredInstrs.length === 0 && <p className="px-4 py-3 text-xs text-app-dark/40">Aucun instructeur{instrSearch ? ` pour « ${instrSearch} »` : ""}.</p>}
+                              {filteredInstrs.map((u) => {
+                                const checked = selectedInstructeurIds.includes(u.id);
+                                return (
+                                  <label key={u.id} className={`flex cursor-pointer items-center gap-3 px-4 py-2.5 transition ${checked ? "bg-app-soft" : "hover:bg-app-soft/60"}`}>
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      className="h-4 w-4 rounded accent-app-accent"
+                                      onChange={() => setSelectedInstructeurIds((prev) => checked ? prev.filter((id) => id !== u.id) : [...prev, u.id])}
+                                    />
+                                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white" style={{ background: "#982598" }}>
+                                      {u.username[0]?.toUpperCase()}
+                                    </div>
+                                    <span className="flex-1 text-xs font-medium text-app-dark">{u.username}</span>
+                                    <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${u.is_active ? "bg-green-100 text-green-700" : "bg-red-100 text-red-500"}`}>
+                                      {u.is_active ? "Actif" : "Inactif"}
+                                    </span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                            {/* Footer */}
+                            <div className="border-t border-app-muted px-4 py-3 bg-white">
+                              <button
+                                type="button"
+                                className="w-full rounded-lg py-2 text-sm font-bold text-white transition disabled:opacity-40"
+                                style={{ background: "#982598" }}
+                                disabled={selectedInstructeurIds.length === 0 || !selectedClassId}
+                                onClick={() => void handleAssignInstructeurToClass()}
+                              >
+                                Assigner {selectedInstructeurIds.length > 0 ? `${selectedInstructeurIds.length} instructeur(s)` : "instructeurs"}
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── Liste des classes ── */}
+                <div className="overflow-hidden rounded-2xl border border-app-muted bg-white shadow-sm">
+                  <div className="flex items-center justify-between border-b border-app-muted px-5 py-4" style={{ background: "#15173D" }}>
+                    <span className="text-base font-bold text-white">Classes créées</span>
+                    <span className="rounded-full bg-white/20 px-3 py-0.5 text-xs font-bold text-white">{classesData.length}</span>
+                  </div>
+                  <div className="p-5 grid gap-4 md:grid-cols-2">
+                    {classesData.length === 0 && <p className="col-span-2 py-6 text-center text-sm text-app-dark/40">Aucune classe créée.</p>}
                     {classesData.map((c) => (
-                      <div className="rounded border border-app-muted/60 p-3" key={c.id}>
-                        <p className="text-sm font-semibold">
-                          {c.code} - {c.label} ({c.brigade.code})
-                        </p>
-                        <p className="mt-1 text-xs text-app-dark/70">
-                          Instructeurs: {c.instructeurs.map((i) => i.username).join(", ") || "-"}
-                        </p>
-                        <p className="text-xs text-app-dark/70">
-                          Stagiaires: {c.stageaires.map((s) => s.username).join(", ") || "-"}
-                        </p>
+                      <div
+                        key={c.id}
+                        className={`rounded-xl border-2 p-4 transition ${selectedClassId === c.id ? "border-app-accent bg-app-soft" : "border-app-muted bg-white"}`}
+                      >
+                        {/* Class header */}
+                        <div className="flex items-start justify-between mb-3 gap-2">
+                          <button
+                            type="button"
+                            className="flex-1 text-left"
+                            onClick={() => setSelectedClassId(c.id)}
+                          >
+                            <p className="text-sm font-bold text-app-dark">{c.code} — {c.label}</p>
+                            <p className="text-xs text-app-dark/50">Brigade : {c.brigade.code}{c.brigade.label ? ` · ${c.brigade.label}` : ""}</p>
+                          </button>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <span className="rounded-full bg-app-soft border border-app-muted px-2 py-0.5 text-[10px] font-semibold text-app-dark/60">{c.stageaires.length} stag.</span>
+                            <span className="rounded-full bg-app-soft border border-app-muted px-2 py-0.5 text-[10px] font-semibold text-app-dark/60">{c.instructeurs.length} instr.</span>
+                            {/* Delete class button */}
+                            <button
+                              type="button"
+                              title="Supprimer la classe"
+                              className="flex h-7 w-7 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-xs text-red-500 transition hover:bg-red-100 hover:text-red-700"
+                              onClick={async () => {
+                                if (!confirm(`Supprimer la classe « ${c.label} » ?`)) return;
+                                await apiFetch(`/api/admin/classes/${c.id}/delete/`, { method: "DELETE" });
+                                if (selectedClassId === c.id) setSelectedClassId("");
+                                await loadClasses();
+                              }}
+                            >
+                              🗑
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Members */}
+                        <div className="space-y-2">
+                          {/* Instructeurs */}
+                          <div>
+                            <p className="text-[10px] uppercase tracking-wide font-bold text-app-dark/40 mb-1">Instructeurs</p>
+                            {c.instructeurs.length === 0 ? (
+                              <p className="text-xs text-app-dark/30 italic">Aucun</p>
+                            ) : (
+                              <div className="flex flex-wrap gap-1">
+                                {c.instructeurs.map((i) => (
+                                  <span key={i.id ?? i.username} className="flex items-center gap-1 rounded-full border border-app-muted bg-white pl-1 pr-1.5 py-0.5 text-[11px] font-medium text-app-dark">
+                                    <span className="inline-flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold text-white" style={{ background: "#982598" }}>{i.username[0]?.toUpperCase()}</span>
+                                    {i.username}
+                                    <button
+                                      type="button"
+                                      title="Retirer"
+                                      className="ml-0.5 text-red-400 hover:text-red-600 leading-none"
+                                      onClick={async (e) => {
+                                        e.stopPropagation();
+                                        await apiFetch(`/api/admin/classes/${c.id}/remove-instructeur/`, {
+                                          method: "POST",
+                                          headers: { "Content-Type": "application/json" },
+                                          body: JSON.stringify({ instructeur_id: i.id }),
+                                        });
+                                        await loadClasses();
+                                      }}
+                                    >
+                                      ✕
+                                    </button>
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Stagiaires */}
+                          <div>
+                            <p className="text-[10px] uppercase tracking-wide font-bold text-app-dark/40 mb-1">Stagiaires</p>
+                            {c.stageaires.length === 0 ? (
+                              <p className="text-xs text-app-dark/30 italic">Aucun</p>
+                            ) : (
+                              <div className="flex flex-wrap gap-1">
+                                {c.stageaires.slice(0, 8).map((s) => (
+                                  <span key={s.id ?? s.username} className="flex items-center gap-1 rounded-full border border-app-muted bg-white pl-1 pr-1.5 py-0.5 text-[11px] font-medium text-app-dark">
+                                    <span className="inline-flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold text-white" style={{ background: "#15173D" }}>{s.username[0]?.toUpperCase()}</span>
+                                    {s.username}
+                                    <button
+                                      type="button"
+                                      title="Retirer"
+                                      className="ml-0.5 text-red-400 hover:text-red-600 leading-none"
+                                      onClick={async (e) => {
+                                        e.stopPropagation();
+                                        await apiFetch(`/api/admin/classes/${c.id}/remove-stageaire/`, {
+                                          method: "POST",
+                                          headers: { "Content-Type": "application/json" },
+                                          body: JSON.stringify({ stageaire_id: s.id }),
+                                        });
+                                        await loadClasses();
+                                      }}
+                                    >
+                                      ✕
+                                    </button>
+                                  </span>
+                                ))}
+                                {c.stageaires.length > 8 && (
+                                  <span className="rounded-full border border-app-muted bg-app-soft px-2 py-0.5 text-[11px] text-app-dark/50">+{c.stageaires.length - 8}</span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       </div>
                     ))}
-                    {classesData.length === 0 ? <EmptyState message="Aucune classe creee." /> : null}
                   </div>
-                </SubCard>
+                </div>
+
               </div>
             ) : null}
           </article>

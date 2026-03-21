@@ -229,6 +229,13 @@ class Cours(models.Model):
         blank=True,
         related_name="cours",
     )
+    classe = models.ForeignKey(
+        "Classe",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="cours",
+    )
 
 
 class CoursFichier(models.Model):
