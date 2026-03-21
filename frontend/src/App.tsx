@@ -3071,7 +3071,7 @@ function DashboardPage({
                         ) : null}
                       </div>
                     </div>
-                  ))}
+                  )) : null}
                   {(stageaireData.soumissions_detail ?? []).length === 0 && (
                     <div className="flex flex-col items-center gap-3 py-10 text-center">
                       <div className="flex h-14 w-14 items-center justify-center rounded-full" style={{ background: "rgba(21,23,61,0.06)" }}>
