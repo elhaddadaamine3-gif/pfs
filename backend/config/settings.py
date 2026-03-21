@@ -127,3 +127,17 @@ SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
 }
+
+# ── Email ──────────────────────────────────────────────────────────────────
+# Development: prints emails to the console.
+# For production, switch to SMTP and fill in the credentials below.
+EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+DEFAULT_FROM_EMAIL = "PFS Platform <no-reply@pfs.local>"
+
+# SMTP example (uncomment and fill for production):
+# EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+# EMAIL_HOST = "smtp.example.com"
+# EMAIL_PORT = 587
+# EMAIL_USE_TLS = True
+# EMAIL_HOST_USER = "your@email.com"
+# EMAIL_HOST_PASSWORD = "your-password"

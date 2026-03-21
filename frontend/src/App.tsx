@@ -850,6 +850,7 @@ function DashboardPage({
   const [lastCreatedAccount, setLastCreatedAccount] = useState<{ username: string; password: string; role: string; matricule: string } | null>(null);
   const [showAccountPassword, setShowAccountPassword] = useState(false);
   const [resetPasswordState, setResetPasswordState] = useState<Record<number, { value: string; show: boolean; saved: string }>>({});
+  const [emailResetState, setEmailResetState] = useState<Record<number, "idle" | "loading" | "sent" | "no_email" | "error">>({});
   const [csvFileName, setCsvFileName] = useState("");
   const [csvErrors, setCsvErrors] = useState<Array<{ line: number; error: string }>>([]);
   const [classesData, setClassesData] = useState<AdminClassData[]>([]);
@@ -973,6 +974,30 @@ function DashboardPage({
     if (!user) return;
     void loadDashboard();
   }, [user?.role]);
+
+  // Silently refresh admin data (no full-page spinner) when the admin navigates
+  // to a view that lists users — ensures they see accounts created by others.
+  const [adminRefreshing, setAdminRefreshing] = useState(false);
+  const reloadAdminData = async () => {
+    if (!user || user.role !== "Admin") return;
+    setAdminRefreshing(true);
+    try {
+      const response = await apiFetch("/api/dashboard/admin/");
+      if (response.ok) {
+        const data: AdminDashboardData = await response.json();
+        setAdminData(data);
+      }
+    } finally {
+      setAdminRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!user || user.role !== "Admin") return;
+    if (adminView === "users" || adminView === "accounts" || adminView === "classes") {
+      void reloadAdminData();
+    }
+  }, [adminView]);
 
   const handleCreateCourse = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -1325,7 +1350,7 @@ function DashboardPage({
         rank_id: "",
         speciality_id: "",
       });
-      await loadDashboard();
+      await reloadAdminData();
     }
   };
 
@@ -1424,7 +1449,7 @@ function DashboardPage({
       const errNote = result.error_count ? ` (${result.error_count} lignes ignorees)` : "";
       setActionMessage(`Import termine: ${result.created_count} comptes crees${errNote}.`);
       setCsvErrors((result.errors as Array<{ line: number; error: string }>) ?? []);
-      await loadDashboard();
+      await reloadAdminData();
     } else if (result.errors?.length) {
       setCsvErrors(result.errors as Array<{ line: number; error: string }>);
       setActionMessage(`Import echoue — ${result.error_count ?? result.errors.length} erreur(s). Voir details ci-dessous.`);
@@ -2262,7 +2287,7 @@ function DashboardPage({
                       const isModActive = stageaireView === "cours" && selectedModule?.id === m.id;
                       return (
                         <button
-                          key={m.id}
+                          key={`sidebar-mod-${m.id}`}
                           type="button"
                           onClick={() => { setStageaireView("cours"); handleOpenModule(m); }}
                           className="w-full flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs font-medium transition text-left"
@@ -2563,7 +2588,7 @@ function DashboardPage({
                     </div>
                     <div className="space-y-2">
                       {stageaireData.notifications.latest.map((n) => (
-                        <div key={n.id} className="flex gap-3 rounded-xl border border-app-muted/60 bg-app-soft/60 p-3">
+                        <div key={`notif-${n.id}`} className="flex gap-3 rounded-xl border border-app-muted/60 bg-app-soft/60 p-3">
                           <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full" style={{ background: "rgba(152,37,152,0.12)" }}>
                             {n.type === "nouveau_cours" ? (
                               <svg className="h-4 w-4 text-app-accent" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
@@ -2594,7 +2619,7 @@ function DashboardPage({
                   <div className="grid gap-3 md:grid-cols-2">
                     {(stageaireData.modules_list ?? []).map((m) => (
                       <button
-                        key={m.id}
+                        key={`mod-${m.id}`}
                         type="button"
                         onClick={() => { handleOpenModule(m); setModulesExpanded(true); }}
                         className="group flex items-center gap-4 rounded-xl border border-app-muted bg-app-soft/40 p-4 text-left transition hover:border-app-dark/30 hover:bg-white hover:shadow-sm"
@@ -2648,7 +2673,7 @@ function DashboardPage({
                     <div className="grid gap-3 md:grid-cols-2">
                       {selectedModule.matieres.map((mat) => (
                         <button
-                          key={mat.id}
+                          key={`mat-${mat.id}`}
                           type="button"
                           onClick={() => void handleOpenMatiere(mat.id)}
                           className="group flex items-center gap-3 rounded-xl border border-app-muted bg-app-soft/40 p-4 text-left transition hover:border-app-dark/30 hover:bg-white hover:shadow-sm"
@@ -2697,7 +2722,7 @@ function DashboardPage({
                     <p className="text-xs font-semibold uppercase tracking-wider text-app-dark/40 mb-4">Brochures — {selectedMatiere.nom}</p>
                     <div className="grid gap-3 md:grid-cols-2">
                       {selectedMatiere.brochures.map((b) => (
-                        <button key={b.id} type="button" onClick={() => void handleOpenBrochure(b.id)}
+                        <button key={`brochure-${b.id}`} type="button" onClick={() => void handleOpenBrochure(b.id)}
                           className="group flex items-center gap-3 rounded-xl border border-app-muted bg-app-soft/40 p-4 text-left transition hover:border-app-dark/30 hover:bg-white hover:shadow-sm">
                           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg" style={{ background: "rgba(21,23,61,0.08)" }}>
                             <svg className="h-4 w-4 text-app-dark" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" /></svg>
@@ -2721,7 +2746,7 @@ function DashboardPage({
                     {selectedMatiere.cours.length > 0 ? (
                       <div className="grid gap-3 md:grid-cols-2">
                         {selectedMatiere.cours.map((c) => (
-                          <button key={c.id} type="button" onClick={() => void openCoursModal(c.id)}
+                          <button key={`cours-${c.id}`} type="button" onClick={() => void openCoursModal(c.id)}
                             className="group flex items-start gap-3 rounded-xl border border-app-muted bg-app-soft/40 p-4 text-left transition hover:border-app-accent/30 hover:bg-white hover:shadow-sm">
                             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg" style={{ background: "rgba(152,37,152,0.1)" }}>
                               <svg className="h-4 w-4 text-app-accent" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z" /><path strokeLinecap="round" strokeLinejoin="round" d="M14 2v6h6M16 13H8M16 17H8M10 9H8" /></svg>
@@ -2772,7 +2797,7 @@ function DashboardPage({
                   {selectedBrochure.cours.length > 0 ? (
                     <div className="grid gap-3 md:grid-cols-2">
                       {selectedBrochure.cours.map((c) => (
-                        <button key={c.id} type="button" onClick={() => void openCoursModal(c.id)}
+                        <button key={`cours-${c.id}`} type="button" onClick={() => void openCoursModal(c.id)}
                           className="group flex items-start gap-3 rounded-xl border border-app-muted bg-app-soft/40 p-4 text-left transition hover:border-app-accent/30 hover:bg-white hover:shadow-sm">
                           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg" style={{ background: "rgba(152,37,152,0.1)" }}>
                             <svg className="h-4 w-4 text-app-accent" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z" /><path strokeLinecap="round" strokeLinejoin="round" d="M14 2v6h6M16 13H8M16 17H8M10 9H8" /></svg>
@@ -2920,7 +2945,7 @@ function DashboardPage({
                       const isOverdue = !submitted && control.deadline && new Date(control.deadline) < new Date();
                       return (
                         <div
-                          key={control.id}
+                          key={`control-${control.id}`}
                           className="rounded-xl border p-4 transition"
                           style={{ borderColor: submitted ? "rgba(34,197,94,0.3)" : isOverdue ? "rgba(239,68,68,0.3)" : "rgba(228,145,201,0.5)", background: submitted ? "rgba(34,197,94,0.04)" : isOverdue ? "rgba(239,68,68,0.03)" : "white" }}
                         >
@@ -3367,6 +3392,22 @@ function DashboardPage({
             {adminView === "users" && !selectedAdminUser ? (
               <PanelSection title="Utilisateurs">
 
+                {/* ── Refresh bar ── */}
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-xs text-app-dark/40">{adminData.users.length} compte(s) au total</p>
+                  <button
+                    type="button"
+                    onClick={() => void reloadAdminData()}
+                    disabled={adminRefreshing}
+                    className="flex items-center gap-1.5 rounded-lg border border-app-muted bg-white px-3 py-1.5 text-xs font-semibold text-app-dark transition hover:bg-app-soft disabled:opacity-50"
+                  >
+                    <svg className={`h-3.5 w-3.5 ${adminRefreshing ? "animate-spin" : ""}`} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    {adminRefreshing ? "Actualisation…" : "Actualiser"}
+                  </button>
+                </div>
+
                 {/* ── Actions de masse ── */}
                 <div className="mt-3 rounded-xl border border-app-muted bg-app-soft px-4 py-3">
                   <p className="mb-2 text-xs font-bold uppercase tracking-wide text-app-dark/50">Actions de masse</p>
@@ -3532,7 +3573,7 @@ function DashboardPage({
                               {groups[roleGroup].map((u) => {
                                 const rps = resetPasswordState[u.id] ?? { value: "", show: false, saved: "" };
                                 return (
-                                  <div key={u.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
+                                  <div key={`user-${u.id}`} className="flex flex-wrap items-center gap-3 px-4 py-3">
                                     {/* Avatar */}
                                     <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white" style={{ background: "#15173D" }}>
                                       {u.username[0]?.toUpperCase()}
@@ -3585,6 +3626,46 @@ function DashboardPage({
                                         ✓
                                       </button>
                                     </div>
+                                    {/* Send password by email */}
+                                    {(() => {
+                                      const es = emailResetState[u.id] ?? "idle";
+                                      return (
+                                        <button
+                                          type="button"
+                                          title={u.email ? `Envoyer par email (${u.email})` : "Aucune adresse email configurée"}
+                                          disabled={!u.email || es === "loading"}
+                                          className="shrink-0 flex items-center gap-1 rounded px-2 py-1 text-xs font-semibold transition disabled:opacity-40"
+                                          style={{
+                                            background: es === "sent" ? "rgba(34,197,94,0.12)" : es === "error" || es === "no_email" ? "rgba(239,68,68,0.1)" : "rgba(21,23,61,0.07)",
+                                            color: es === "sent" ? "#16a34a" : es === "error" || es === "no_email" ? "#dc2626" : "#15173D",
+                                          }}
+                                          onClick={async () => {
+                                            setEmailResetState((prev) => ({ ...prev, [u.id]: "loading" }));
+                                            const r = await apiFetch(`/api/admin/users/${u.id}/send-password-email/`, { method: "POST" });
+                                            const data: { detail: string } = await r.json();
+                                            if (r.ok) {
+                                              setEmailResetState((prev) => ({ ...prev, [u.id]: "sent" }));
+                                              setTimeout(() => setEmailResetState((prev) => ({ ...prev, [u.id]: "idle" })), 4000);
+                                            } else if (data.detail === "no_email") {
+                                              setEmailResetState((prev) => ({ ...prev, [u.id]: "no_email" }));
+                                              setTimeout(() => setEmailResetState((prev) => ({ ...prev, [u.id]: "idle" })), 3000);
+                                            } else {
+                                              setEmailResetState((prev) => ({ ...prev, [u.id]: "error" }));
+                                              setTimeout(() => setEmailResetState((prev) => ({ ...prev, [u.id]: "idle" })), 3000);
+                                            }
+                                          }}
+                                        >
+                                          {es === "loading" ? (
+                                            <svg className="h-3 w-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" /></svg>
+                                          ) : es === "sent" ? (
+                                            <svg className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                                          ) : (
+                                            <svg className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                                          )}
+                                          {es === "sent" ? "Envoyé" : es === "no_email" ? "Pas d'email" : es === "error" ? "Erreur" : "Email"}
+                                        </button>
+                                      );
+                                    })()}
                                     {/* Toggle active */}
                                     <button
                                       className="shrink-0 rounded bg-app-dark px-2 py-1 text-xs text-white disabled:opacity-40"
@@ -4289,7 +4370,7 @@ function DashboardPage({
                               {filteredStags.map((u) => {
                                 const checked = selectedStageaireIds.includes(u.id);
                                 return (
-                                  <label key={u.id} className={`flex cursor-pointer items-center gap-3 px-4 py-2.5 transition ${checked ? "bg-app-soft" : "hover:bg-app-soft/60"}`}>
+                                  <label key={`stag-sel-${u.id}`} className={`flex cursor-pointer items-center gap-3 px-4 py-2.5 transition ${checked ? "bg-app-soft" : "hover:bg-app-soft/60"}`}>
                                     <input
                                       type="checkbox"
                                       checked={checked}
@@ -4367,7 +4448,7 @@ function DashboardPage({
                               {filteredInstrs.map((u) => {
                                 const checked = selectedInstructeurIds.includes(u.id);
                                 return (
-                                  <label key={u.id} className={`flex cursor-pointer items-center gap-3 px-4 py-2.5 transition ${checked ? "bg-app-soft" : "hover:bg-app-soft/60"}`}>
+                                  <label key={`instr-sel-${u.id}`} className={`flex cursor-pointer items-center gap-3 px-4 py-2.5 transition ${checked ? "bg-app-soft" : "hover:bg-app-soft/60"}`}>
                                     <input
                                       type="checkbox"
                                       checked={checked}
@@ -4457,7 +4538,7 @@ function DashboardPage({
                             ) : (
                               <div className="flex flex-wrap gap-1">
                                 {c.instructeurs.map((i) => (
-                                  <span key={i.id ?? i.username} className="flex items-center gap-1 rounded-full border border-app-muted bg-white pl-1 pr-1.5 py-0.5 text-[11px] font-medium text-app-dark">
+                                  <span key={`instr-${i.id ?? i.username}`} className="flex items-center gap-1 rounded-full border border-app-muted bg-white pl-1 pr-1.5 py-0.5 text-[11px] font-medium text-app-dark">
                                     <span className="inline-flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold text-white" style={{ background: "#982598" }}>{i.username[0]?.toUpperCase()}</span>
                                     {i.username}
                                     <button
@@ -4490,7 +4571,7 @@ function DashboardPage({
                             ) : (
                               <div className="flex flex-wrap gap-1">
                                 {c.stageaires.slice(0, 8).map((s) => (
-                                  <span key={s.id ?? s.username} className="flex items-center gap-1 rounded-full border border-app-muted bg-white pl-1 pr-1.5 py-0.5 text-[11px] font-medium text-app-dark">
+                                  <span key={`stag-${s.id ?? s.username}`} className="flex items-center gap-1 rounded-full border border-app-muted bg-white pl-1 pr-1.5 py-0.5 text-[11px] font-medium text-app-dark">
                                     <span className="inline-flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold text-white" style={{ background: "#15173D" }}>{s.username[0]?.toUpperCase()}</span>
                                     {s.username}
                                     <button

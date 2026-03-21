@@ -1,8 +1,12 @@
 import base64
 import csv
 import io
+import secrets
+import string
 
 from django.contrib.auth import get_user_model
+from django.core.mail import send_mail
+from django.conf import settings as django_settings
 from django.core.files.base import ContentFile
 from django.db import IntegrityError
 from django.db import models
@@ -771,6 +775,62 @@ class AdminResetUserPasswordView(APIView):
         return Response({"detail": "password updated"})
 
 
+class AdminSendPasswordEmailView(APIView):
+    """Generate a random password, set it, and email it to the user."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, user_id):
+        profile, _ = UserProfile.objects.get_or_create(user=request.user)
+        if profile.role != UserProfile.ROLE_ADMIN:
+            return Response({"detail": "Forbidden for this role"}, status=status.HTTP_403_FORBIDDEN)
+
+        user_model = get_user_model()
+        target = user_model.objects.filter(id=user_id).first()
+        if not target:
+            return Response({"detail": "user not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        if not target.email:
+            return Response({"detail": "no_email"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Generate a secure random password: 12 chars, mix of letters + digits + symbol
+        alphabet = string.ascii_letters + string.digits + "!@#$%&"
+        new_password = "".join(secrets.choice(alphabet) for _ in range(12))
+
+        target.set_password(new_password)
+        target.save(update_fields=["password"])
+
+        subject = "Réinitialisation de votre mot de passe — PFS Platform"
+        body = (
+            f"Bonjour {target.username},\n\n"
+            f"Votre mot de passe a été réinitialisé par un administrateur.\n\n"
+            f"  Identifiant : {target.username}\n"
+            f"  Nouveau mot de passe : {new_password}\n\n"
+            f"Veuillez vous connecter et changer ce mot de passe dès que possible.\n\n"
+            f"— Équipe PFS Platform"
+        )
+
+        try:
+            send_mail(
+                subject=subject,
+                message=body,
+                from_email=django_settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[target.email],
+                fail_silently=False,
+            )
+        except Exception as exc:
+            return Response({"detail": f"email_error: {exc}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        log_event(
+            request=request,
+            event_type="admin.user.password_reset_email",
+            target_type="user",
+            target_id=target.id,
+            message=f"Admin sent password reset email for {target.username} to {target.email}",
+            metadata={"email": target.email},
+        )
+        return Response({"detail": "email_sent", "email": target.email})
+
+
 class AdminBulkCreateAccountsCsvView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -1319,6 +1379,20 @@ class AdminClassesView(APIView):
                 .filter(Q(date_fin__isnull=True) | Q(date_fin__gte=today))
                 .select_related("stagiaire")
             )
+            # Deduplicate by user ID to avoid duplicate IDs when multiple active
+            # affectation rows exist for the same person (different date_debut values)
+            seen_instr = set()
+            instructeurs = []
+            for link in instructeur_links:
+                if link.instructeur.id not in seen_instr:
+                    seen_instr.add(link.instructeur.id)
+                    instructeurs.append({"id": link.instructeur.id, "username": link.instructeur.username})
+            seen_stag = set()
+            stageaires = []
+            for link in stageaire_links:
+                if link.stagiaire.id not in seen_stag:
+                    seen_stag.add(link.stagiaire.id)
+                    stageaires.append({"id": link.stagiaire.id, "username": link.stagiaire.username})
             classes_payload.append(
                 {
                     "id": classe.id_classe,
@@ -1328,14 +1402,8 @@ class AdminClassesView(APIView):
                         "code": classe.brigade.code_brigade,
                         "label": classe.brigade.libelle,
                     },
-                    "instructeurs": [
-                        {"id": link.instructeur.id, "username": link.instructeur.username}
-                        for link in instructeur_links
-                    ],
-                    "stageaires": [
-                        {"id": link.stagiaire.id, "username": link.stagiaire.username}
-                        for link in stageaire_links
-                    ],
+                    "instructeurs": instructeurs,
+                    "stageaires": stageaires,
                 }
             )
 
