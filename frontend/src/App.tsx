@@ -2174,473 +2174,633 @@ function DashboardPage({
 
       {user.role === "Stagiaire" && stageaireData ? (
         <section className="mt-6 flex gap-0 min-h-[calc(100vh-120px)]">
-          {/* Sidebar */}
-          <aside className="sidebar-animated w-52 min-w-[13rem] flex-shrink-0 flex flex-col overflow-hidden rounded-l-2xl border border-app-muted bg-white shadow-sm">
-            {/* User info */}
-            <div className="px-4 py-4 border-b border-app-muted/60">
+          {/* ── Sidebar ── */}
+          <aside className="sidebar-animated w-56 min-w-[14rem] flex-shrink-0 flex flex-col overflow-hidden rounded-l-2xl border border-r-0 border-app-muted bg-white shadow-sm">
+
+            {/* Profile header */}
+            <div className="px-4 pt-5 pb-4 border-b border-app-muted/60" style={{ background: "linear-gradient(160deg,#15173D 0%,#1e2050 100%)" }}>
               <div className="flex items-center gap-3">
-                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-app-dark text-sm font-bold text-white">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full text-base font-bold text-white ring-2 ring-white/20" style={{ background: "#982598" }}>
                   {user.username.charAt(0).toUpperCase()}
                 </div>
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-app-dark">{user.username}</p>
-                  <p className="text-xs text-app-dark/50">Stagiaire</p>
+                  <p className="truncate text-sm font-bold text-white">{user.username}</p>
+                  <div className="mt-0.5 flex items-center gap-1.5">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                    <p className="text-xs text-white/50">Stagiaire</p>
+                  </div>
                 </div>
               </div>
+              {/* Mini progress bar */}
+              {stageaireData.controls.available_count > 0 && (
+                <div className="mt-3">
+                  <div className="flex justify-between text-xs text-white/50 mb-1">
+                    <span>Progression contrôles</span>
+                    <span>{stageaireData.controls.submitted_count}/{stageaireData.controls.available_count}</span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all"
+                      style={{ width: `${Math.min(100, Math.round((stageaireData.controls.submitted_count / stageaireData.controls.available_count) * 100))}%`, background: "#982598" }}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
-            {/* Nav items */}
-            <nav className="flex-1 px-2 py-3 space-y-1">
-              {(["dashboard", "cours", "controles", "reponse_controle", "sujet"] as const).map((tab) => {
-                if (tab === "cours") {
-                  const isCoursActive = stageaireView === "cours";
-                  return (
-                    <div key="cours">
-                      {/* Modules collapsible header */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setModulesExpanded((prev) => !prev);
-                          setStageaireView("cours");
-                          setSelectedMatiere(null);
-                          setSelectedBrochure(null);
-                          setSelectedCours(null);
-                          setCoursFileCache({});
-                        }}
-                        className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition text-left"
-                        style={{ background: isCoursActive ? "#15173D" : "transparent", color: isCoursActive ? "white" : "#15173D" }}
-                      >
-                        <span className="flex-1 truncate">Modules</span>
-                        <svg
-                          className="h-3.5 w-3.5 shrink-0 transition-transform"
-                          style={{ transform: modulesExpanded ? "rotate(90deg)" : "rotate(0deg)" }}
-                          fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24"
-                        >
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                        </svg>
-                      </button>
-                      {/* Expanded module sub-items */}
-                      {modulesExpanded && (
-                        <div className="mt-1 ml-2 space-y-0.5 border-l-2 border-app-muted pl-2">
-                          {(stageaireData.modules_list ?? []).map((m) => {
-                            const isModActive = isCoursActive && selectedModule?.id === m.id;
-                            return (
-                              <button
-                                key={m.id}
-                                type="button"
-                                onClick={() => { setStageaireView("cours"); handleOpenModule(m); }}
-                                className="w-full flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs font-medium transition text-left"
-                                style={{ background: isModActive ? "#15173D" : "transparent", color: isModActive ? "white" : "#15173D" }}
-                                title={m.nom}
-                              >
-                                <span className="flex-1 truncate">{m.nom}</span>
-                                <span
-                                  className="shrink-0 rounded-full px-1.5 text-xs font-bold leading-none py-0.5"
-                                  style={{ background: isModActive ? "rgba(255,255,255,0.2)" : "#e5e7eb", color: isModActive ? "white" : "#374151" }}
-                                >
-                                  {m.matieres.length}
-                                </span>
-                              </button>
-                            );
-                          })}
-                          {(stageaireData.modules_list ?? []).length === 0 && (
-                            <p className="px-2 py-1 text-xs text-app-dark/40">Aucun module</p>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                }
 
-                const labels: Record<string, string> = { dashboard: "Tableau de bord", controles: "Contrôles", reponse_controle: "Réponse contrôle", sujet: "Sujet fin de stage" };
-                const badge = tab === "controles" && stageaireData.controls.pending_count > 0
-                  ? stageaireData.controls.pending_count
-                  : tab === "reponse_controle" ? (stageaireData.soumissions_detail ?? []).length
-                  : 0;
+            {/* Nav items */}
+            <nav className="flex-1 px-2 py-3 space-y-0.5">
+
+              {/* Dashboard */}
+              {(["dashboard"] as const).map((tab) => {
                 const active = stageaireView === tab;
                 return (
                   <button
                     key={tab}
                     type="button"
                     onClick={() => { setStageaireView(tab); setSelectedModule(null); setSelectedMatiere(null); setSelectedBrochure(null); setSelectedCours(null); setCoursFileCache({}); }}
-                    className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition text-left"
+                    className="w-full flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition text-left"
                     style={{ background: active ? "#15173D" : "transparent", color: active ? "white" : "#15173D" }}
                   >
-                    <span className="flex-1 truncate">{labels[tab]}</span>
-                    {badge > 0 ? (
-                      <span
-                        className="rounded-full px-1.5 py-0.5 text-xs font-bold leading-none"
-                        style={{ background: active ? "rgba(255,255,255,0.2)" : "#982598", color: "white" }}
-                      >
-                        {badge}
-                      </span>
-                    ) : null}
+                    <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth={active ? 2.5 : 2} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                    </svg>
+                    <span className="flex-1">Tableau de bord</span>
                   </button>
                 );
               })}
+
+              {/* Modules collapsible */}
+              <div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setModulesExpanded((prev) => !prev);
+                    setStageaireView("cours");
+                    setSelectedMatiere(null);
+                    setSelectedBrochure(null);
+                    setSelectedCours(null);
+                    setCoursFileCache({});
+                  }}
+                  className="w-full flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition text-left"
+                  style={{ background: stageaireView === "cours" ? "#15173D" : "transparent", color: stageaireView === "cours" ? "white" : "#15173D" }}
+                >
+                  <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth={stageaireView === "cours" ? 2.5 : 2} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                  </svg>
+                  <span className="flex-1">Modules</span>
+                  <span className="shrink-0 rounded-full px-1.5 py-0.5 text-xs font-bold leading-none" style={{ background: stageaireView === "cours" ? "rgba(255,255,255,0.2)" : "#e5e7eb", color: stageaireView === "cours" ? "white" : "#374151" }}>
+                    {(stageaireData.modules_list ?? []).length}
+                  </span>
+                  <svg className="h-3 w-3 shrink-0 transition-transform" style={{ transform: modulesExpanded ? "rotate(90deg)" : "rotate(0deg)", opacity: 0.6 }} fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+                {modulesExpanded && (
+                  <div className="mt-0.5 ml-3 space-y-0.5 border-l-2 border-app-muted pl-2">
+                    {(stageaireData.modules_list ?? []).map((m) => {
+                      const isModActive = stageaireView === "cours" && selectedModule?.id === m.id;
+                      return (
+                        <button
+                          key={m.id}
+                          type="button"
+                          onClick={() => { setStageaireView("cours"); handleOpenModule(m); }}
+                          className="w-full flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs font-medium transition text-left"
+                          style={{ background: isModActive ? "#15173D" : "transparent", color: isModActive ? "white" : "#15173D" }}
+                          title={m.nom}
+                        >
+                          <svg className="h-3 w-3 shrink-0 opacity-60" fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" /></svg>
+                          <span className="flex-1 truncate">{m.nom}</span>
+                          <span className="shrink-0 rounded-full px-1.5 py-0.5 text-xs font-bold leading-none" style={{ background: isModActive ? "rgba(255,255,255,0.2)" : "#e5e7eb", color: isModActive ? "white" : "#374151" }}>
+                            {m.matieres.length}
+                          </span>
+                        </button>
+                      );
+                    })}
+                    {(stageaireData.modules_list ?? []).length === 0 && (
+                      <p className="px-2 py-1.5 text-xs italic text-app-dark/40">Aucun module</p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Contrôles */}
+              {(["controles"] as const).map((tab) => {
+                const active = stageaireView === tab;
+                const badge = stageaireData.controls.pending_count;
+                return (
+                  <button
+                    key={tab}
+                    type="button"
+                    onClick={() => { setStageaireView(tab); setSelectedModule(null); setSelectedMatiere(null); setSelectedBrochure(null); setSelectedCours(null); setCoursFileCache({}); }}
+                    className="w-full flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition text-left"
+                    style={{ background: active ? "#15173D" : "transparent", color: active ? "white" : "#15173D" }}
+                  >
+                    <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth={active ? 2.5 : 2} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                    </svg>
+                    <span className="flex-1">Contrôles</span>
+                    {badge > 0 && (
+                      <span className="shrink-0 rounded-full px-1.5 py-0.5 text-xs font-bold leading-none" style={{ background: active ? "rgba(255,255,255,0.2)" : "#982598", color: "white" }}>
+                        {badge}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+
+              {/* Réponses */}
+              {(["reponse_controle"] as const).map((tab) => {
+                const active = stageaireView === tab;
+                const badge = (stageaireData.soumissions_detail ?? []).length;
+                return (
+                  <button
+                    key={tab}
+                    type="button"
+                    onClick={() => { setStageaireView(tab); setSelectedModule(null); setSelectedMatiere(null); setSelectedBrochure(null); setSelectedCours(null); setCoursFileCache({}); }}
+                    className="w-full flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition text-left"
+                    style={{ background: active ? "#15173D" : "transparent", color: active ? "white" : "#15173D" }}
+                  >
+                    <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth={active ? 2.5 : 2} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                    </svg>
+                    <span className="flex-1">Mes réponses</span>
+                    {badge > 0 && (
+                      <span className="shrink-0 rounded-full px-1.5 py-0.5 text-xs font-bold leading-none" style={{ background: active ? "rgba(255,255,255,0.2)" : "#e5e7eb", color: active ? "white" : "#374151" }}>
+                        {badge}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+
+              {/* Sujet fin de stage */}
+              {(["sujet"] as const).map((tab) => {
+                const active = stageaireView === tab;
+                return (
+                  <button
+                    key={tab}
+                    type="button"
+                    onClick={() => { setStageaireView(tab); setSelectedModule(null); setSelectedMatiere(null); setSelectedBrochure(null); setSelectedCours(null); setCoursFileCache({}); }}
+                    className="w-full flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition text-left"
+                    style={{ background: active ? "#15173D" : "transparent", color: active ? "white" : "#15173D" }}
+                  >
+                    <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth={active ? 2.5 : 2} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <span className="flex-1">Sujet fin de stage</span>
+                    {stageaireData.sujet_fin_stage && (
+                      <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: stageaireData.sujet_fin_stage.etat === "EN_COURS" ? "#982598" : "#22c55e" }} />
+                    )}
+                  </button>
+                );
+              })}
+
             </nav>
-            {/* Stats footer */}
-            <div className="px-4 py-3 border-t border-app-muted/60 space-y-1.5">
-              <div className="flex justify-between text-xs text-app-dark/50">
-                <span>Cours</span>
-                <span className="font-semibold text-app-dark">{(stageaireData.cours_list ?? []).length}</span>
-              </div>
-              <div className="flex justify-between text-xs text-app-dark/50">
-                <span>Soumis</span>
-                <span className="font-semibold text-app-dark">{stageaireData.controls.submitted_count}</span>
-              </div>
-              <div className="flex justify-between text-xs text-app-dark/50">
-                <span>En attente</span>
-                <span className="font-semibold text-app-accent">{stageaireData.controls.pending_count}</span>
-              </div>
-              {stageaireData.notifications.unread_count > 0 && (
-                <div className="flex justify-between text-xs text-app-dark/50">
-                  <span>Notifs</span>
-                  <span className="font-semibold text-app-accent">{stageaireData.notifications.unread_count}</span>
+
+            {/* Footer stats */}
+            <div className="px-4 py-3 border-t border-app-muted/60 space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wider text-app-dark/40">Résumé</p>
+              <div className="grid grid-cols-3 gap-1 text-center">
+                <div className="rounded-lg bg-app-soft py-2">
+                  <p className="text-base font-black text-app-dark">{(stageaireData.cours_list ?? []).length}</p>
+                  <p className="text-xs text-app-dark/50">Cours</p>
                 </div>
-              )}
+                <div className="rounded-lg bg-app-soft py-2">
+                  <p className="text-base font-black text-emerald-600">{stageaireData.controls.submitted_count}</p>
+                  <p className="text-xs text-app-dark/50">Soumis</p>
+                </div>
+                <div className="rounded-lg py-2" style={{ background: stageaireData.controls.pending_count > 0 ? "rgba(152,37,152,0.1)" : "#F1E9E9" }}>
+                  <p className="text-base font-black" style={{ color: stageaireData.controls.pending_count > 0 ? "#982598" : "#15173D" }}>{stageaireData.controls.pending_count}</p>
+                  <p className="text-xs text-app-dark/50">Attente</p>
+                </div>
+              </div>
             </div>
           </aside>
 
-          {/* Main content */}
-          <div className="flex-1 p-6 overflow-y-auto grid gap-5 content-start">
+          {/* ── Main content ── */}
+          <div className="flex-1 overflow-y-auto rounded-r-2xl border border-app-muted bg-app-soft/40 p-6 grid gap-5 content-start">
 
-            {/* Dashboard */}
+            {/* ── DASHBOARD ── */}
             {stageaireView === "dashboard" ? (
               <>
                 {/* Hero banner */}
-                <div
-                  className="relative overflow-hidden rounded-2xl p-8 shadow-lg"
-                  style={{ background: "linear-gradient(135deg, #0E0F29 0%, #15173D 60%, #1E1F4A 100%)" }}
-                >
-                  {/* Decorative shapes */}
+                <div className="relative overflow-hidden rounded-2xl p-8 shadow-lg" style={{ background: "linear-gradient(135deg,#0E0F29 0%,#15173D 60%,#1E1F4A 100%)" }}>
                   <div className="pointer-events-none absolute -right-10 -top-10 h-48 w-48 rounded-full opacity-10" style={{ background: "#982598" }} />
                   <div className="pointer-events-none absolute -bottom-8 right-24 h-32 w-32 rounded-full opacity-10" style={{ background: "#982598" }} />
-                  <div className="pointer-events-none absolute bottom-4 right-4 h-16 w-16 rounded-full opacity-10" style={{ background: "#982598" }} />
-
                   <div className="relative flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
-                    {/* Text side */}
                     <div>
-                      <p className="text-sm font-semibold uppercase tracking-widest text-white/60">Espace Stagiaire</p>
-                      <h1 className="mt-1 text-3xl font-black uppercase leading-tight text-white md:text-4xl">
-                        Plateforme de<br />
-                        <span style={{ color: "#982598" }}>Cours en Ligne</span>
+                      <p className="text-xs font-semibold uppercase tracking-widest text-white/50">Espace Stagiaire</p>
+                      <h1 className="mt-1 text-2xl font-black uppercase leading-tight text-white md:text-3xl">
+                        Bienvenue,<br /><span style={{ color: "#E491C9" }}>{user.username}</span>
                       </h1>
-                      <p className="mt-3 max-w-sm text-sm text-white/70">
-                        Accédez à vos cours, consultez vos contrôles et suivez votre progression.
-                      </p>
-                      <button
-                        className="mt-5 rounded-xl px-5 py-2.5 text-sm font-bold shadow transition hover:opacity-90"
-                        style={{ background: "#982598", color: "#fff" }}
-                        onClick={() => setStageaireView("cours")}
-                        type="button"
-                      >
-                        Accéder aux cours →
-                      </button>
+                      <p className="mt-2 max-w-sm text-sm text-white/60">Accédez à vos cours, suivez vos contrôles et consultez votre progression.</p>
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <button className="rounded-xl px-4 py-2 text-sm font-bold text-white transition hover:opacity-90" style={{ background: "#982598" }} onClick={() => { setStageaireView("cours"); setModulesExpanded(true); }} type="button">
+                          Mes modules →
+                        </button>
+                        {stageaireData.controls.pending_count > 0 && (
+                          <button className="rounded-xl border border-white/20 bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/20" onClick={() => setStageaireView("controles")} type="button">
+                            {stageaireData.controls.pending_count} contrôle{stageaireData.controls.pending_count > 1 ? "s" : ""} en attente
+                          </button>
+                        )}
+                      </div>
                     </div>
-
-                    {/* Illustration side */}
-                    <div className="flex shrink-0 items-center justify-center gap-4">
-                      {/* Monitor illustration */}
-                      <div className="relative">
-                        <div className="flex h-32 w-44 flex-col rounded-xl border-4 bg-white/5 shadow-inner" style={{ borderColor: "rgba(152,37,152,0.3)" }}>
-                          <div className="flex flex-1 items-center justify-center p-3">
-                            <div className="w-full space-y-1.5">
-                              <div className="h-2 rounded-full bg-white/50" />
-                              <div className="h-2 w-4/5 rounded-full bg-white/30" />
-                              <div className="h-2 w-3/5 rounded-full bg-white/30" />
-                              <div className="mt-2 flex items-center gap-1.5">
-                                <div className="flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold text-white" style={{ background: "#982598" }}>✓</div>
-                                <div className="h-2 flex-1 rounded-full bg-white/20" />
-                              </div>
-                            </div>
-                          </div>
-                          <div className="flex justify-center pb-1">
-                            <div className="h-3 w-8 rounded-b bg-white/10" />
-                          </div>
+                    <div className="flex shrink-0 gap-3">
+                      {[
+                        { label: "Cours", value: (stageaireData.cours_list ?? []).length, color: "white" },
+                        { label: "Contrôles", value: stageaireData.controls.available_count, color: "#E491C9" },
+                        { label: "Soumis", value: stageaireData.controls.submitted_count, color: "#22c55e" },
+                      ].map((s) => (
+                        <div key={s.label} className="flex flex-col items-center justify-center rounded-2xl px-4 py-3 text-center" style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                          <p className="text-2xl font-black" style={{ color: s.color }}>{s.value}</p>
+                          <p className="mt-0.5 text-xs font-medium text-white/50">{s.label}</p>
                         </div>
-                        <div className="mx-auto mt-1 h-2 w-16 rounded-full bg-white/10" />
-                      </div>
-
-                      {/* Stats badges */}
-                      <div className="flex flex-col gap-2">
-                        <div className="rounded-xl px-4 py-2 text-center" style={{ background: "rgba(152,37,152,0.15)" }}>
-                          <p className="text-xl font-black text-white">{(stageaireData.cours_list ?? []).length}</p>
-                          <p className="text-xs font-semibold text-white/60">Cours</p>
-                        </div>
-                        <div className="rounded-xl px-4 py-2 text-center" style={{ background: "rgba(152,37,152,0.15)" }}>
-                          <p className="text-xl font-black" style={{ color: "#982598" }}>{stageaireData.controls.available_count}</p>
-                          <p className="text-xs font-semibold text-white/60">Contrôles</p>
-                        </div>
-                        <div className="rounded-xl px-4 py-2 text-center" style={{ background: "rgba(152,37,152,0.15)" }}>
-                          <p className="text-xl font-black" style={{ color: "#982598" }}>{stageaireData.controls.submitted_count}</p>
-                          <p className="text-xs font-semibold text-white/60">Soumis</p>
-                        </div>
-                      </div>
+                      ))}
                     </div>
                   </div>
                 </div>
 
-                {/* Connexion card */}
-                <article className="rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
-                  <div className="flex items-center gap-4">
-                    <div
-                      className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full text-xl font-bold text-white"
-                      style={{ background: "#15173D" }}
-                    >
-                      {user?.username?.[0]?.toUpperCase() ?? "?"}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-lg font-semibold truncate">{user?.username}</p>
-                      <p className="text-sm text-app-dark/60">{user?.role}</p>
-                    </div>
-                    <span
-                      className="shrink-0 rounded-full px-3 py-1 text-xs font-semibold text-white"
-                      style={{ background: "#22c55e" }}
-                    >
-                      Connecté
-                    </span>
-                  </div>
-                  <div className="mt-4 grid gap-2 md:grid-cols-3 border-t border-app-muted/60 pt-4">
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-app-dark/50">Matricule</p>
-                      <p className="mt-0.5 text-sm font-semibold">{user?.matricule || "—"}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-app-dark/50">Corps</p>
-                      <p className="mt-0.5 text-sm font-semibold">{user?.corps?.label ?? (user?.est_civil ? "Civil" : "—")}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-app-dark/50">Email</p>
-                      <p className="mt-0.5 text-sm font-semibold truncate">{user?.email || "—"}</p>
-                    </div>
-                  </div>
-                </article>
-
-                <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
-                  <h3 className="text-lg font-semibold">Vue d'ensemble</h3>
-                  <div className="mt-3 grid gap-2 md:grid-cols-3">
-                    <div className="rounded-lg border border-app-muted/70 bg-app-soft px-3 py-2">
-                      <p className="text-xs uppercase tracking-wide text-app-dark/60">Cours disponibles</p>
-                      <p className="mt-1 text-xl font-semibold">{(stageaireData.cours_list ?? []).length}</p>
-                    </div>
-                    <div className="rounded-lg border border-app-muted/70 bg-app-soft px-3 py-2">
-                      <p className="text-xs uppercase tracking-wide text-app-dark/60">Contrôles soumis</p>
-                      <p className="mt-1 text-xl font-semibold">{stageaireData.controls.submitted_count}</p>
-                    </div>
-                    <div className="rounded-lg border border-app-muted/70 bg-app-soft px-3 py-2">
-                      <p className="text-xs uppercase tracking-wide text-app-dark/60">En attente</p>
-                      <p className="mt-1 text-xl font-semibold text-app-accent">{stageaireData.controls.pending_count}</p>
-                    </div>
-                  </div>
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    {stageaireData.classes.map((entry) => (
-                      <span className="rounded bg-app-soft px-2 py-1 text-xs" key={entry.classe_code}>
-                        {entry.classe_code} — {entry.brigade_code}
-                      </span>
-                    ))}
-                    {stageaireData.classes.length === 0 ? <EmptyState message="Aucune classe assignée." /> : null}
-                  </div>
-                  {stageaireData.notes.length > 0 && (
-                    <div className="mt-4">
-                      <p className="text-sm font-semibold text-app-dark/70">Notes publiées</p>
-                      <div className="mt-2 space-y-1">
-                        {stageaireData.notes.map((note, index) => (
-                          <p className="text-sm" key={`${note.controle}-${index}`}>
-                            {note.controle}: <span className="font-semibold">{note.note}/20</span>
-                          </p>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {stageaireData.notifications.unread_count > 0 && (
-                    <div className="mt-4">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-app-dark/50">
-                        Notifications ({stageaireData.notifications.unread_count} non lues)
-                      </p>
-                      <div className="mt-2 space-y-2">
-                        {stageaireData.notifications.latest.map((n) => (
-                          <div key={n.id} className="flex gap-3 rounded-xl border border-app-muted bg-app-soft p-3">
-                            <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-app-accent/15 text-app-accent">
-                              {n.type === "nouveau_cours" ? (
-                                <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
-                              ) : n.type === "correction_publiee" ? (
-                                <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                              ) : (
-                                <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
-                              )}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <p className="text-xs font-semibold text-app-dark">{n.title}</p>
-                              {n.message && <p className="mt-0.5 text-xs text-app-dark/60">{n.message}</p>}
-                              <p className="mt-1 text-xs text-app-dark/40">{new Date(n.created_at).toLocaleDateString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </article>
-              </>
-            ) : null}
-
-            {/* Cours — no module selected yet */}
-            {stageaireView === "cours" && !selectedModule && !selectedMatiere && !selectedCours ? (
-              <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
-                <div className="flex flex-col items-center gap-3 py-8 text-center">
-                  <svg className="h-10 w-10 text-app-dark/20" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-                  </svg>
-                  <div>
-                    <p className="text-sm font-semibold text-app-dark/60">Sélectionnez un module</p>
-                    <p className="mt-1 text-xs text-app-dark/40">{(stageaireData.modules_list ?? []).length} module{(stageaireData.modules_list ?? []).length !== 1 ? "s" : ""} disponible{(stageaireData.modules_list ?? []).length !== 1 ? "s" : ""} dans le menu</p>
-                  </div>
-                </div>
-              </article>
-            ) : null}
-
-            {/* Cours — matière list within a module */}
-            {stageaireView === "cours" && selectedModule && !selectedMatiere && !selectedCours ? (
-              <>
-                <div className="flex items-center gap-2 px-1">
-                  <svg className="h-4 w-4 shrink-0 text-app-dark/40" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-                  </svg>
-                  <h3 className="text-base font-semibold truncate text-app-dark">{selectedModule.nom}</h3>
-                </div>
-
-                <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
-                  <h3 className="text-lg font-semibold">Matières</h3>
-                  <div className="mt-4 grid gap-3 md:grid-cols-2">
-                    {selectedModule.matieres.map((mat) => (
-                      <div
-                        className="cursor-pointer rounded-xl border border-app-muted bg-app-soft/50 p-4 transition-all hover:border-app-dark/40 hover:bg-app-soft hover:shadow-sm"
-                        key={mat.id}
-                        onClick={() => void handleOpenMatiere(mat.id)}
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <p className="text-sm font-semibold leading-snug">{mat.nom}</p>
-                          <span
-                            className="mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold text-white"
-                            style={{ background: mat.cours_count > 0 ? "#15173D" : "#aaa" }}
-                          >
-                            {mat.cours_count} cours
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                    {selectedModule.matieres.length === 0 ? <EmptyState message="Aucune matière dans ce module." /> : null}
-                  </div>
-                </article>
-              </>
-            ) : null}
-
-            {/* Cours — matière: show brochures if any, else cours list */}
-            {stageaireView === "cours" && selectedMatiere && !selectedBrochure && !selectedCours ? (
-              <>
-                <div className="flex items-center gap-2 px-1">
+                {/* Quick actions */}
+                <div className="grid gap-3 md:grid-cols-3">
                   <button
                     type="button"
-                    onClick={() => setSelectedMatiere(null)}
-                    className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-app-dark/60 transition hover:bg-app-soft"
+                    onClick={() => { setStageaireView("cours"); setModulesExpanded(true); }}
+                    className="group flex items-center gap-4 rounded-2xl border border-app-muted bg-white p-5 text-left shadow-sm transition hover:border-app-dark/30 hover:shadow-md"
                   >
-                    ← {selectedMatiere.module_nom}
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl" style={{ background: "rgba(21,23,61,0.08)" }}>
+                      <svg className="h-5 w-5 text-app-dark" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                      </svg>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-app-dark">Consulter les cours</p>
+                      <p className="mt-0.5 text-xs text-app-dark/50">{(stageaireData.modules_list ?? []).length} module{(stageaireData.modules_list ?? []).length !== 1 ? "s" : ""} disponible{(stageaireData.modules_list ?? []).length !== 1 ? "s" : ""}</p>
+                    </div>
+                    <svg className="ml-auto h-4 w-4 shrink-0 text-app-dark/30 transition group-hover:translate-x-0.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
                   </button>
-                  <span className="text-app-dark/30">/</span>
-                  <h3 className="text-base font-semibold truncate text-app-dark">{selectedMatiere.nom}</h3>
+
+                  <button
+                    type="button"
+                    onClick={() => setStageaireView("controles")}
+                    className="group flex items-center gap-4 rounded-2xl border bg-white p-5 text-left shadow-sm transition hover:shadow-md"
+                    style={{ borderColor: stageaireData.controls.pending_count > 0 ? "rgba(152,37,152,0.35)" : undefined }}
+                  >
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl" style={{ background: stageaireData.controls.pending_count > 0 ? "rgba(152,37,152,0.1)" : "rgba(21,23,61,0.08)" }}>
+                      <svg className="h-5 w-5" style={{ color: stageaireData.controls.pending_count > 0 ? "#982598" : "#15173D" }} fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                      </svg>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-app-dark">Mes contrôles</p>
+                      <p className="mt-0.5 text-xs" style={{ color: stageaireData.controls.pending_count > 0 ? "#982598" : "rgba(21,23,61,0.5)" }}>
+                        {stageaireData.controls.pending_count > 0 ? `${stageaireData.controls.pending_count} en attente` : `${stageaireData.controls.submitted_count} soumis`}
+                      </p>
+                    </div>
+                    <svg className="ml-auto h-4 w-4 shrink-0 text-app-dark/30 transition group-hover:translate-x-0.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setStageaireView("reponse_controle")}
+                    className="group flex items-center gap-4 rounded-2xl border border-app-muted bg-white p-5 text-left shadow-sm transition hover:border-app-dark/30 hover:shadow-md"
+                  >
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl" style={{ background: "rgba(21,23,61,0.08)" }}>
+                      <svg className="h-5 w-5 text-app-dark" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                      </svg>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-app-dark">Mes réponses</p>
+                      <p className="mt-0.5 text-xs text-app-dark/50">{(stageaireData.soumissions_detail ?? []).length} soumission{(stageaireData.soumissions_detail ?? []).length !== 1 ? "s" : ""}</p>
+                    </div>
+                    <svg className="ml-auto h-4 w-4 shrink-0 text-app-dark/30 transition group-hover:translate-x-0.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+                  </button>
                 </div>
 
-                {/* Brochures */}
-                {selectedMatiere.brochures.length > 0 ? (
-                  <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
-                    <h3 className="text-lg font-semibold">Brochures</h3>
-                    <div className="mt-4 grid gap-3 md:grid-cols-2">
-                      {selectedMatiere.brochures.map((b) => (
-                        <div
-                          className="cursor-pointer rounded-xl border border-app-muted bg-app-soft/50 p-4 transition-all hover:border-app-dark/40 hover:bg-app-soft hover:shadow-sm"
-                          key={b.id}
-                          onClick={() => void handleOpenBrochure(b.id)}
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <p className="text-sm font-semibold leading-snug">{b.nom}</p>
-                            <span
-                              className="mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold text-white"
-                              style={{ background: b.cours_count > 0 ? "#15173D" : "#aaa" }}
-                            >
-                              {b.cours_count} cours
-                            </span>
-                          </div>
+                {/* Profile + Classes */}
+                <div className="grid gap-4 md:grid-cols-2">
+                  {/* Profile card */}
+                  <article className="rounded-2xl border border-app-muted bg-white p-5 shadow-sm">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-app-dark/40 mb-3">Mon profil</p>
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-lg font-bold text-white" style={{ background: "#15173D" }}>
+                        {user?.username?.[0]?.toUpperCase() ?? "?"}
+                      </div>
+                      <div>
+                        <p className="font-semibold text-app-dark">{user?.username}</p>
+                        <span className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700">
+                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Connecté
+                        </span>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 border-t border-app-muted/60 pt-3">
+                      {[
+                        { label: "Matricule", value: user?.matricule || "—" },
+                        { label: "Corps", value: user?.corps?.label ?? (user?.est_civil ? "Civil" : "—") },
+                        { label: "Email", value: user?.email || "—" },
+                        { label: "Spécialité", value: user?.speciality?.label || "—" },
+                      ].map((f) => (
+                        <div key={f.label}>
+                          <p className="text-xs text-app-dark/40">{f.label}</p>
+                          <p className="mt-0.5 text-sm font-semibold truncate text-app-dark">{f.value}</p>
                         </div>
                       ))}
                     </div>
                   </article>
-                ) : (
-                  /* No brochures — show cours directly */
-                  <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
-                    <h3 className="text-lg font-semibold">Cours</h3>
-                    <div className="mt-4 grid gap-3 md:grid-cols-2">
-                      {selectedMatiere.cours.map((c) => (
-                        <div
-                          className="cursor-pointer rounded-xl border border-app-muted bg-app-soft/50 p-4 transition-all hover:border-app-dark/40 hover:bg-app-soft hover:shadow-sm"
-                          key={c.id}
-                          onClick={() => void openCoursModal(c.id)}
-                        >
-                          <p className="text-sm font-semibold leading-snug">{c.titre}</p>
-                          {c.description ? <p className="mt-1 text-xs text-app-dark/60 line-clamp-2">{c.description}</p> : null}
-                          <div className="mt-2 flex items-center justify-between gap-2">
-                            <span className="text-xs text-app-dark/50">Instructeur: {c.instructeur}</span>
-                            {c.controles_count > 0 && (
-                              <span className="rounded-full px-2 py-0.5 text-xs font-semibold text-white" style={{ background: "#982598" }}>
-                                {c.controles_count} contrôle{c.controles_count > 1 ? "s" : ""}
+
+                  {/* Classes + notes */}
+                  <article className="rounded-2xl border border-app-muted bg-white p-5 shadow-sm">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-app-dark/40 mb-3">Mes classes</p>
+                    {stageaireData.classes.length > 0 ? (
+                      <div className="flex flex-wrap gap-2">
+                        {stageaireData.classes.map((entry) => (
+                          <div key={entry.classe_code} className="rounded-xl border border-app-muted/70 bg-app-soft px-3 py-2">
+                            <p className="text-sm font-bold text-app-dark">{entry.classe_label || entry.classe_code}</p>
+                            <p className="text-xs text-app-dark/50">{entry.brigade_code}</p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center gap-2 py-4 text-center">
+                        <svg className="h-8 w-8 text-app-dark/20" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
+                        <p className="text-xs text-app-dark/40 italic">Aucune classe assignée pour le moment.</p>
+                      </div>
+                    )}
+                    {stageaireData.notes.length > 0 && (
+                      <>
+                        <p className="mt-4 text-xs font-semibold uppercase tracking-wider text-app-dark/40 mb-2">Notes publiées</p>
+                        <div className="space-y-1.5">
+                          {stageaireData.notes.slice(0, 3).map((note, index) => (
+                            <div key={`${note.controle}-${index}`} className="flex items-center justify-between rounded-lg border border-app-muted/60 bg-app-soft px-3 py-1.5">
+                              <p className="text-xs truncate text-app-dark/70 flex-1 mr-2">{note.controle}</p>
+                              <span className="shrink-0 rounded-full px-2 py-0.5 text-xs font-bold text-white" style={{ background: parseFloat(note.note) >= 10 ? "#22c55e" : "#ef4444" }}>
+                                {note.note}/20
                               </span>
+                            </div>
+                          ))}
+                          {stageaireData.notes.length > 3 && (
+                            <button type="button" onClick={() => setStageaireView("reponse_controle")} className="text-xs text-app-accent font-semibold hover:underline">
+                              +{stageaireData.notes.length - 3} autre{stageaireData.notes.length - 3 > 1 ? "s" : ""} →
+                            </button>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </article>
+                </div>
+
+                {/* Notifications */}
+                {stageaireData.notifications.latest.length > 0 && (
+                  <article className="rounded-2xl border border-app-muted bg-white p-5 shadow-sm">
+                    <div className="flex items-center justify-between mb-3">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-app-dark/40">Notifications récentes</p>
+                      {stageaireData.notifications.unread_count > 0 && (
+                        <span className="rounded-full px-2 py-0.5 text-xs font-bold text-white" style={{ background: "#982598" }}>
+                          {stageaireData.notifications.unread_count} non lues
+                        </span>
+                      )}
+                    </div>
+                    <div className="space-y-2">
+                      {stageaireData.notifications.latest.map((n) => (
+                        <div key={n.id} className="flex gap-3 rounded-xl border border-app-muted/60 bg-app-soft/60 p-3">
+                          <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full" style={{ background: "rgba(152,37,152,0.12)" }}>
+                            {n.type === "nouveau_cours" ? (
+                              <svg className="h-4 w-4 text-app-accent" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
+                            ) : n.type === "correction_publiee" ? (
+                              <svg className="h-4 w-4 text-emerald-600" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                            ) : (
+                              <svg className="h-4 w-4 text-app-accent" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
                             )}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs font-semibold text-app-dark">{n.title}</p>
+                            {n.message && <p className="mt-0.5 text-xs text-app-dark/60 line-clamp-2">{n.message}</p>}
+                            <p className="mt-1 text-xs text-app-dark/35">{new Date(n.created_at).toLocaleDateString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
                           </div>
                         </div>
                       ))}
-                      {selectedMatiere.cours.length === 0 ? <EmptyState message="Aucun cours dans cette matière." /> : null}
                     </div>
                   </article>
                 )}
               </>
             ) : null}
 
-            {/* Cours — cours list within a brochure */}
+            {/* ── COURS — no module selected ── */}
+            {stageaireView === "cours" && !selectedModule && !selectedMatiere && !selectedCours ? (
+              <article className="rounded-2xl border border-app-muted bg-white p-8 shadow-sm">
+                <p className="text-xs font-semibold uppercase tracking-wider text-app-dark/40 mb-4">Modules de formation</p>
+                {(stageaireData.modules_list ?? []).length > 0 ? (
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {(stageaireData.modules_list ?? []).map((m) => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => { handleOpenModule(m); setModulesExpanded(true); }}
+                        className="group flex items-center gap-4 rounded-xl border border-app-muted bg-app-soft/40 p-4 text-left transition hover:border-app-dark/30 hover:bg-white hover:shadow-sm"
+                      >
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={{ background: "#15173D" }}>
+                          <svg className="h-5 w-5 text-white" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="font-semibold text-app-dark truncate">{m.nom}</p>
+                          <p className="mt-0.5 text-xs text-app-dark/50">{m.matieres.length} matière{m.matieres.length !== 1 ? "s" : ""}</p>
+                        </div>
+                        <svg className="h-4 w-4 shrink-0 text-app-dark/30 transition group-hover:translate-x-0.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center gap-3 py-12 text-center">
+                    <div className="flex h-14 w-14 items-center justify-center rounded-full" style={{ background: "rgba(21,23,61,0.06)" }}>
+                      <svg className="h-7 w-7 text-app-dark/30" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
+                    </div>
+                    <div>
+                      <p className="font-semibold text-app-dark/50">Aucun module disponible</p>
+                      <p className="mt-1 text-xs text-app-dark/35">Les modules de formation apparaîtront ici une fois assignés.</p>
+                    </div>
+                  </div>
+                )}
+              </article>
+            ) : null}
+
+            {/* ── COURS — matière list within a module ── */}
+            {stageaireView === "cours" && selectedModule && !selectedMatiere && !selectedCours ? (
+              <>
+                {/* Breadcrumb */}
+                <nav className="flex items-center gap-1.5 text-xs">
+                  <button type="button" onClick={() => setSelectedModule(null)} className="text-app-dark/50 hover:text-app-dark transition">Modules</button>
+                  <svg className="h-3 w-3 text-app-dark/30" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+                  <span className="font-semibold text-app-dark truncate">{selectedModule.nom}</span>
+                </nav>
+
+                <article className="rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
+                  <div className="flex items-center gap-3 mb-5">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={{ background: "#15173D" }}>
+                      <svg className="h-5 w-5 text-white" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold text-app-dark">{selectedModule.nom}</h3>
+                      <p className="text-xs text-app-dark/50">{selectedModule.matieres.length} matière{selectedModule.matieres.length !== 1 ? "s" : ""}</p>
+                    </div>
+                  </div>
+                  {selectedModule.matieres.length > 0 ? (
+                    <div className="grid gap-3 md:grid-cols-2">
+                      {selectedModule.matieres.map((mat) => (
+                        <button
+                          key={mat.id}
+                          type="button"
+                          onClick={() => void handleOpenMatiere(mat.id)}
+                          className="group flex items-center gap-3 rounded-xl border border-app-muted bg-app-soft/40 p-4 text-left transition hover:border-app-dark/30 hover:bg-white hover:shadow-sm"
+                        >
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg" style={{ background: "rgba(152,37,152,0.1)" }}>
+                            <svg className="h-4 w-4 text-app-accent" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-sm text-app-dark truncate">{mat.nom}</p>
+                            <p className="mt-0.5 text-xs text-app-dark/50">{mat.cours_count} cours</p>
+                          </div>
+                          {mat.cours_count > 0 ? (
+                            <span className="shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold text-white" style={{ background: "#15173D" }}>{mat.cours_count}</span>
+                          ) : (
+                            <span className="shrink-0 rounded-full bg-app-muted/50 px-2 py-0.5 text-xs text-app-dark/40">0</span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center gap-2 py-8 text-center">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-app-soft">
+                        <svg className="h-6 w-6 text-app-dark/30" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                      </div>
+                      <p className="text-sm text-app-dark/40 italic">Aucune matière dans ce module.</p>
+                    </div>
+                  )}
+                </article>
+              </>
+            ) : null}
+
+            {/* ── COURS — matière: brochures or direct cours ── */}
+            {stageaireView === "cours" && selectedMatiere && !selectedBrochure && !selectedCours ? (
+              <>
+                {/* Breadcrumb */}
+                <nav className="flex items-center gap-1.5 text-xs flex-wrap">
+                  <button type="button" onClick={() => setSelectedModule(null)} className="text-app-dark/50 hover:text-app-dark transition">Modules</button>
+                  <svg className="h-3 w-3 text-app-dark/30" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+                  <button type="button" onClick={() => setSelectedMatiere(null)} className="text-app-dark/50 hover:text-app-dark transition">{selectedMatiere.module_nom}</button>
+                  <svg className="h-3 w-3 text-app-dark/30" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+                  <span className="font-semibold text-app-dark">{selectedMatiere.nom}</span>
+                </nav>
+
+                {selectedMatiere.brochures.length > 0 ? (
+                  <article className="rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-app-dark/40 mb-4">Brochures — {selectedMatiere.nom}</p>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      {selectedMatiere.brochures.map((b) => (
+                        <button key={b.id} type="button" onClick={() => void handleOpenBrochure(b.id)}
+                          className="group flex items-center gap-3 rounded-xl border border-app-muted bg-app-soft/40 p-4 text-left transition hover:border-app-dark/30 hover:bg-white hover:shadow-sm">
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg" style={{ background: "rgba(21,23,61,0.08)" }}>
+                            <svg className="h-4 w-4 text-app-dark" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" /></svg>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-sm text-app-dark truncate">{b.nom}</p>
+                            <p className="mt-0.5 text-xs text-app-dark/50">{b.cours_count} cours</p>
+                          </div>
+                          {b.cours_count > 0 ? (
+                            <span className="shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold text-white" style={{ background: "#15173D" }}>{b.cours_count}</span>
+                          ) : (
+                            <span className="shrink-0 rounded-full bg-app-muted/50 px-2 py-0.5 text-xs text-app-dark/40">0</span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </article>
+                ) : (
+                  <article className="rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-app-dark/40 mb-4">Cours — {selectedMatiere.nom}</p>
+                    {selectedMatiere.cours.length > 0 ? (
+                      <div className="grid gap-3 md:grid-cols-2">
+                        {selectedMatiere.cours.map((c) => (
+                          <button key={c.id} type="button" onClick={() => void openCoursModal(c.id)}
+                            className="group flex items-start gap-3 rounded-xl border border-app-muted bg-app-soft/40 p-4 text-left transition hover:border-app-accent/30 hover:bg-white hover:shadow-sm">
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg" style={{ background: "rgba(152,37,152,0.1)" }}>
+                              <svg className="h-4 w-4 text-app-accent" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z" /><path strokeLinecap="round" strokeLinejoin="round" d="M14 2v6h6M16 13H8M16 17H8M10 9H8" /></svg>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-semibold text-sm text-app-dark leading-snug">{c.titre}</p>
+                              {c.description && <p className="mt-0.5 text-xs text-app-dark/50 line-clamp-2">{c.description}</p>}
+                              <div className="mt-2 flex items-center gap-2 flex-wrap">
+                                <span className="text-xs text-app-dark/40">{c.instructeur}</span>
+                                {c.controles_count > 0 && (
+                                  <span className="rounded-full px-1.5 py-0.5 text-xs font-semibold text-white" style={{ background: "#982598" }}>
+                                    {c.controles_count} contrôle{c.controles_count > 1 ? "s" : ""}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <svg className="mt-1 h-4 w-4 shrink-0 text-app-dark/20 transition group-hover:translate-x-0.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center gap-2 py-8 text-center">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-app-soft">
+                          <svg className="h-6 w-6 text-app-dark/30" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z" /></svg>
+                        </div>
+                        <p className="text-sm text-app-dark/40 italic">Aucun cours dans cette matière.</p>
+                      </div>
+                    )}
+                  </article>
+                )}
+              </>
+            ) : null}
+
+            {/* ── COURS — brochure cours list ── */}
             {stageaireView === "cours" && selectedBrochure && !selectedCours ? (
               <>
-                <div className="flex items-center gap-2 px-1">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedBrochure(null)}
-                    className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-app-dark/60 transition hover:bg-app-soft"
-                  >
-                    ← {selectedBrochure.matiere_nom}
-                  </button>
-                  <span className="text-app-dark/30">/</span>
-                  <h3 className="text-base font-semibold truncate text-app-dark">{selectedBrochure.nom}</h3>
-                </div>
+                {/* Breadcrumb */}
+                <nav className="flex items-center gap-1.5 text-xs flex-wrap">
+                  <button type="button" onClick={() => { setSelectedBrochure(null); setSelectedMatiere(null); setSelectedModule(null); }} className="text-app-dark/50 hover:text-app-dark transition">Modules</button>
+                  <svg className="h-3 w-3 text-app-dark/30" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+                  <button type="button" onClick={() => setSelectedBrochure(null)} className="text-app-dark/50 hover:text-app-dark transition">{selectedBrochure.matiere_nom}</button>
+                  <svg className="h-3 w-3 text-app-dark/30" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+                  <span className="font-semibold text-app-dark">{selectedBrochure.nom}</span>
+                </nav>
 
-                <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
-                  <h3 className="text-lg font-semibold">Cours</h3>
-                  <div className="mt-4 grid gap-3 md:grid-cols-2">
-                    {selectedBrochure.cours.map((c) => (
-                      <div
-                        className="cursor-pointer rounded-xl border border-app-muted bg-app-soft/50 p-4 transition-all hover:border-app-dark/40 hover:bg-app-soft hover:shadow-sm"
-                        key={c.id}
-                        onClick={() => void openCoursModal(c.id)}
-                      >
-                        <p className="text-sm font-semibold leading-snug">{c.titre}</p>
-                        {c.description ? <p className="mt-1 text-xs text-app-dark/60 line-clamp-2">{c.description}</p> : null}
-                        <div className="mt-2 flex items-center justify-between gap-2">
-                          <span className="text-xs text-app-dark/50">Instructeur: {c.instructeur}</span>
-                          {c.controles_count > 0 && (
-                            <span className="rounded-full px-2 py-0.5 text-xs font-semibold text-white" style={{ background: "#982598" }}>
-                              {c.controles_count} contrôle{c.controles_count > 1 ? "s" : ""}
-                            </span>
-                          )}
-                        </div>
+                <article className="rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-app-dark/40 mb-4">Cours — {selectedBrochure.nom}</p>
+                  {selectedBrochure.cours.length > 0 ? (
+                    <div className="grid gap-3 md:grid-cols-2">
+                      {selectedBrochure.cours.map((c) => (
+                        <button key={c.id} type="button" onClick={() => void openCoursModal(c.id)}
+                          className="group flex items-start gap-3 rounded-xl border border-app-muted bg-app-soft/40 p-4 text-left transition hover:border-app-accent/30 hover:bg-white hover:shadow-sm">
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg" style={{ background: "rgba(152,37,152,0.1)" }}>
+                            <svg className="h-4 w-4 text-app-accent" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z" /><path strokeLinecap="round" strokeLinejoin="round" d="M14 2v6h6M16 13H8M16 17H8M10 9H8" /></svg>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-sm text-app-dark leading-snug">{c.titre}</p>
+                            {c.description && <p className="mt-0.5 text-xs text-app-dark/50 line-clamp-2">{c.description}</p>}
+                            <div className="mt-2 flex items-center gap-2 flex-wrap">
+                              <span className="text-xs text-app-dark/40">{c.instructeur}</span>
+                              {c.controles_count > 0 && (
+                                <span className="rounded-full px-1.5 py-0.5 text-xs font-semibold text-white" style={{ background: "#982598" }}>
+                                  {c.controles_count} contrôle{c.controles_count > 1 ? "s" : ""}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <svg className="mt-1 h-4 w-4 shrink-0 text-app-dark/20 transition group-hover:translate-x-0.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center gap-2 py-8 text-center">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-app-soft">
+                        <svg className="h-6 w-6 text-app-dark/30" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z" /></svg>
                       </div>
-                    ))}
-                    {selectedBrochure.cours.length === 0 ? <EmptyState message="Aucun cours dans cette brochure." /> : null}
-                  </div>
+                      <p className="text-sm text-app-dark/40 italic">Aucun cours dans cette brochure.</p>
+                    </div>
+                  )}
                 </article>
               </>
             ) : null}
@@ -2732,86 +2892,143 @@ function DashboardPage({
               </>
             ) : null}
 
-            {/* Contrôles */}
+            {/* ── CONTRÔLES ── */}
             {stageaireView === "controles" ? (
               <>
-                <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
-                  <h3 className="text-lg font-semibold">Contrôles à réaliser</h3>
-                  <p className="mt-1 text-sm text-app-dark/60">Disponibles: {stageaireData.controls.available_count} · Soumis: {stageaireData.controls.submitted_count} · En attente: {stageaireData.controls.pending_count}</p>
-                  <div className="mt-3 space-y-3">
-                    {stageaireData.controls_list.map((control) => {
+                {/* Stats bar */}
+                <div className="grid grid-cols-3 gap-3">
+                  {[
+                    { label: "Disponibles", value: stageaireData.controls.available_count, color: "#15173D", bg: "rgba(21,23,61,0.07)" },
+                    { label: "Soumis", value: stageaireData.controls.submitted_count, color: "#22c55e", bg: "rgba(34,197,94,0.08)" },
+                    { label: "En attente", value: stageaireData.controls.pending_count, color: "#982598", bg: "rgba(152,37,152,0.08)" },
+                  ].map((s) => (
+                    <div key={s.label} className="rounded-2xl border border-app-muted bg-white p-4 text-center shadow-sm">
+                      <p className="text-2xl font-black" style={{ color: s.color }}>{s.value}</p>
+                      <p className="mt-0.5 text-xs text-app-dark/50">{s.label}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <article className="rounded-2xl border border-app-muted bg-white shadow-sm overflow-hidden">
+                  <div className="px-6 py-4 border-b border-app-muted/60" style={{ background: "#15173D" }}>
+                    <h3 className="font-bold text-white">Contrôles à réaliser</h3>
+                    <p className="mt-0.5 text-xs text-white/50">Répondez aux contrôles avant la date limite.</p>
+                  </div>
+                  <div className="p-5 space-y-3">
+                    {stageaireData.controls_list.length > 0 ? stageaireData.controls_list.map((control) => {
                       const submitted = stageaireData.submitted_control_ids.includes(control.id);
+                      const isOverdue = !submitted && control.deadline && new Date(control.deadline) < new Date();
                       return (
-                        <div className="rounded-lg border border-app-muted bg-white p-4" key={control.id}>
-                          <div className="flex items-start justify-between gap-2">
-                            <p className="text-sm font-semibold text-app-dark">{control.name}</p>
-                            {submitted ? (
-                              <span className="shrink-0 rounded bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700">✓ Soumis</span>
-                            ) : (
-                              <span className="shrink-0 rounded bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">En attente</span>
-                            )}
+                        <div
+                          key={control.id}
+                          className="rounded-xl border p-4 transition"
+                          style={{ borderColor: submitted ? "rgba(34,197,94,0.3)" : isOverdue ? "rgba(239,68,68,0.3)" : "rgba(228,145,201,0.5)", background: submitted ? "rgba(34,197,94,0.04)" : isOverdue ? "rgba(239,68,68,0.03)" : "white" }}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg" style={{ background: submitted ? "rgba(34,197,94,0.1)" : "rgba(152,37,152,0.1)" }}>
+                                {submitted ? (
+                                  <svg className="h-4 w-4 text-emerald-600" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                                ) : (
+                                  <svg className="h-4 w-4 text-app-accent" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+                                )}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="font-semibold text-sm text-app-dark leading-snug">{control.name}</p>
+                                <p className="mt-0.5 text-xs text-app-dark/50 truncate">Cours : {control.cours}</p>
+                              </div>
+                            </div>
+                            <div className="flex flex-col items-end gap-1.5 shrink-0">
+                              {submitted ? (
+                                <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-700">✓ Soumis</span>
+                              ) : (
+                                <span className="rounded-full px-2 py-0.5 text-xs font-bold text-white" style={{ background: isOverdue ? "#ef4444" : "#f59e0b" }}>
+                                  {isOverdue ? "En retard" : "À faire"}
+                                </span>
+                              )}
+                              {control.deadline && (
+                                <span className="text-xs" style={{ color: isOverdue ? "#ef4444" : "rgba(21,23,61,0.4)" }}>
+                                  {new Date(control.deadline).toLocaleDateString("fr-FR")}
+                                </span>
+                              )}
+                            </div>
                           </div>
-                          <p className="mt-1 text-xs text-app-dark/60">
-                            Cours : <span className="font-medium">{control.cours}</span>
-                            {control.deadline ? ` · Limite : ${new Date(control.deadline).toLocaleDateString("fr-FR")}` : ""}
-                            {control.bareme ? ` · Barème : ${control.bareme} pts` : ""}
-                          </p>
+                          {control.bareme ? <p className="mt-2 text-xs text-app-dark/40">Barème : {control.bareme} pts</p> : null}
                           {control.enonce ? (
-                            <div className="mt-3 rounded bg-app-soft p-3">
-                              <p className="mb-1 text-xs font-semibold text-app-dark/60">Énoncé</p>
+                            <div className="mt-3 rounded-lg border border-app-muted/60 bg-app-soft/60 p-3">
+                              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-app-dark/40">Énoncé</p>
                               <p className="whitespace-pre-wrap text-sm text-app-dark/80">{control.enonce}</p>
                             </div>
                           ) : (
-                            <p className="mt-2 text-xs italic text-app-dark/40">Aucun énoncé fourni.</p>
+                            <p className="mt-2 text-xs italic text-app-dark/35">Aucun énoncé textuel — voir le fichier joint.</p>
                           )}
                         </div>
                       );
-                    })}
-                    {stageaireData.controls_list.length === 0 ? <EmptyState message="Aucun contrôle disponible pour le moment." /> : null}
+                    }) : (
+                      <div className="flex flex-col items-center gap-3 py-10 text-center">
+                        <div className="flex h-14 w-14 items-center justify-center rounded-full" style={{ background: "rgba(21,23,61,0.06)" }}>
+                          <svg className="h-7 w-7 text-app-dark/25" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>
+                        </div>
+                        <div>
+                          <p className="font-semibold text-app-dark/50">Aucun contrôle disponible</p>
+                          <p className="mt-0.5 text-xs text-app-dark/35">Les contrôles assignés à votre classe apparaîtront ici.</p>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </article>
 
-                {stageaireData.notes.length > 0 ? (
-                  <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
-                    <h3 className="text-lg font-semibold">Notes publiées</h3>
-                    <div className="mt-3 space-y-2">
+                {stageaireData.notes.length > 0 && (
+                  <article className="rounded-2xl border border-app-muted bg-white shadow-sm overflow-hidden">
+                    <div className="px-6 py-4 border-b border-app-muted/60 flex items-center gap-3">
+                      <svg className="h-4 w-4 text-emerald-600" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" /></svg>
+                      <h3 className="font-bold text-app-dark">Notes publiées</h3>
+                    </div>
+                    <div className="p-5 space-y-2">
                       {stageaireData.notes.map((note, index) => (
-                        <div className="flex items-center justify-between rounded border border-app-muted px-3 py-2" key={`${note.controle}-${index}`}>
-                          <p className="text-sm">{note.controle}</p>
-                          <p className="text-sm font-semibold">{note.note}/20</p>
+                        <div key={`${note.controle}-${index}`} className="flex items-center justify-between rounded-xl border border-app-muted/60 bg-app-soft/40 px-4 py-3">
+                          <p className="text-sm text-app-dark/80 flex-1 mr-3 truncate">{note.controle}</p>
+                          <span className="shrink-0 rounded-full px-3 py-1 text-sm font-black text-white" style={{ background: parseFloat(note.note) >= 10 ? "#22c55e" : "#ef4444" }}>
+                            {note.note}/20
+                          </span>
                         </div>
                       ))}
                     </div>
                   </article>
-                ) : null}
+                )}
               </>
             ) : null}
 
-            {/* Réponse contrôle */}
+            {/* ── RÉPONSES CONTRÔLES ── */}
             {stageaireView === "reponse_controle" ? (
-              <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
-                <h3 className="text-lg font-semibold">Mes réponses aux contrôles</h3>
-                <p className="mt-1 text-sm text-app-dark/60">Historique de vos soumissions et corrections officielles.</p>
-                <div className="mt-4 space-y-3">
-                  {(stageaireData.soumissions_detail ?? []).map((s) => (
-                    <div className="rounded border border-app-muted p-4" key={s.soumission_id}>
+              <article className="rounded-2xl border border-app-muted bg-white shadow-sm overflow-hidden">
+                <div className="px-6 py-4 border-b border-app-muted/60" style={{ background: "#15173D" }}>
+                  <h3 className="font-bold text-white">Mes réponses aux contrôles</h3>
+                  <p className="mt-0.5 text-xs text-white/50">Historique de vos soumissions et corrections officielles.</p>
+                </div>
+                <div className="p-5 space-y-4">
+                  {(stageaireData.soumissions_detail ?? []).length > 0 ? (stageaireData.soumissions_detail ?? []).map((s) => (
+                    <div className="rounded-xl border border-app-muted bg-app-soft/30 p-4" key={s.soumission_id}>
                       <div className="flex items-start justify-between gap-2">
-                        <p className="text-sm font-semibold">{s.controle_name}</p>
-                        <span className={`rounded px-2 py-0.5 text-xs font-semibold ${s.statut === "SOUMIS" ? "bg-blue-100 text-blue-700" : s.statut === "RETARD" ? "bg-red-100 text-red-700" : "bg-app-soft text-app-dark/60"}`}>
+                        <p className="text-sm font-bold text-app-dark">{s.controle_name}</p>
+                        <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-bold ${s.statut === "SOUMIS" ? "bg-blue-100 text-blue-700" : s.statut === "RETARD" ? "bg-red-100 text-red-700" : "bg-app-soft text-app-dark/60"}`}>
                           {s.statut}
                         </span>
                       </div>
-                      <p className="mt-1 text-xs text-app-dark/50">
-                        Soumis le {new Date(s.submitted_at).toLocaleDateString("fr-FR")}
+                      <p className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-app-dark/50">
+                        <span>Soumis le {new Date(s.submitted_at).toLocaleDateString("fr-FR")}</span>
                         {s.has_fichier ? (
-                          <span className="ml-2 inline-flex items-center gap-1 rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-700">
+                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-emerald-700 font-semibold">
                             <svg className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
                             fichier joint
                           </span>
                         ) : null}
                       </p>
                       {s.note !== null && (
-                        <p className="mt-2 text-sm font-semibold text-emerald-700">Note: {s.note}/20</p>
+                        <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1">
+                          <svg className="h-3.5 w-3.5 text-emerald-600" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                          <span className="text-sm font-black text-emerald-700">{s.note}/20</span>
+                        </div>
                       )}
                       {s.correction_publiee ? (
                         <div className="mt-3 rounded bg-app-soft p-3">
@@ -2855,36 +3072,70 @@ function DashboardPage({
                       </div>
                     </div>
                   ))}
-                  {(stageaireData.soumissions_detail ?? []).length === 0 ? <EmptyState message="Vous n'avez encore soumis aucune réponse." /> : null}
+                  {(stageaireData.soumissions_detail ?? []).length === 0 && (
+                    <div className="flex flex-col items-center gap-3 py-10 text-center">
+                      <div className="flex h-14 w-14 items-center justify-center rounded-full" style={{ background: "rgba(21,23,61,0.06)" }}>
+                        <svg className="h-7 w-7 text-app-dark/25" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
+                      </div>
+                      <div>
+                        <p className="font-semibold text-app-dark/50">Aucune réponse soumise</p>
+                        <p className="mt-0.5 text-xs text-app-dark/35">Vos réponses aux contrôles apparaîtront ici.</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </article>
             ) : null}
 
-            {/* Sujet fin de stage */}
+            {/* ── SUJET FIN DE STAGE ── */}
             {stageaireView === "sujet" ? (
-              <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
-                <h3 className="text-lg font-semibold">Sujet de fin de stage</h3>
-                {stageaireData.sujet_fin_stage ? (
-                  <div className="mt-4">
-                    <div className="rounded-xl border border-app-muted bg-app-soft p-4">
-                      <p className="text-base font-semibold">{stageaireData.sujet_fin_stage.titre}</p>
-                      {stageaireData.sujet_fin_stage.description ? (
-                        <p className="mt-2 text-sm text-app-dark/70 whitespace-pre-wrap">{stageaireData.sujet_fin_stage.description}</p>
-                      ) : null}
-                      <div className="mt-3 flex flex-wrap gap-3 text-xs text-app-dark/60">
-                        <span>Encadrant: <span className="font-semibold text-app-dark">{stageaireData.sujet_fin_stage.encadrant}</span></span>
-                        <span>État: <span className={`font-semibold ${stageaireData.sujet_fin_stage.etat === "EN_COURS" ? "text-app-accent" : stageaireData.sujet_fin_stage.etat === "TERMINE" ? "text-emerald-600" : "text-red-500"}`}>{stageaireData.sujet_fin_stage.etat}</span></span>
-                        {stageaireData.sujet_fin_stage.date_affectation ? (
-                          <span>Affecté le: {new Date(stageaireData.sujet_fin_stage.date_affectation).toLocaleDateString("fr-FR")}</span>
-                        ) : null}
+              <article className="rounded-2xl border border-app-muted bg-white shadow-sm overflow-hidden">
+                <div className="px-6 py-4 border-b border-app-muted/60" style={{ background: "#15173D" }}>
+                  <h3 className="font-bold text-white">Sujet de fin de stage</h3>
+                  <p className="mt-0.5 text-xs text-white/50">Votre sujet de recherche et encadrant assigné.</p>
+                </div>
+                <div className="p-6">
+                  {stageaireData.sujet_fin_stage ? (
+                    <div className="space-y-4">
+                      {/* Status badge */}
+                      <div className="flex items-center gap-3">
+                        <span className="rounded-full px-3 py-1 text-xs font-bold text-white" style={{ background: stageaireData.sujet_fin_stage.etat === "EN_COURS" ? "#982598" : stageaireData.sujet_fin_stage.etat === "TERMINE" ? "#22c55e" : "#ef4444" }}>
+                          {stageaireData.sujet_fin_stage.etat.replace("_", " ")}
+                        </span>
+                        {stageaireData.sujet_fin_stage.date_affectation && (
+                          <span className="text-xs text-app-dark/40">Affecté le {new Date(stageaireData.sujet_fin_stage.date_affectation).toLocaleDateString("fr-FR")}</span>
+                        )}
+                      </div>
+                      {/* Title */}
+                      <div className="rounded-xl border border-app-muted/60 bg-app-soft/50 p-5">
+                        <p className="text-lg font-bold text-app-dark">{stageaireData.sujet_fin_stage.titre}</p>
+                        {stageaireData.sujet_fin_stage.description && (
+                          <p className="mt-3 text-sm text-app-dark/70 whitespace-pre-wrap leading-relaxed">{stageaireData.sujet_fin_stage.description}</p>
+                        )}
+                      </div>
+                      {/* Encadrant */}
+                      <div className="flex items-center gap-3 rounded-xl border border-app-muted/60 bg-white px-4 py-3">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white" style={{ background: "#15173D" }}>
+                          {stageaireData.sujet_fin_stage.encadrant.charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                          <p className="text-xs text-app-dark/40">Encadrant</p>
+                          <p className="font-semibold text-app-dark">{stageaireData.sujet_fin_stage.encadrant}</p>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ) : (
-                  <div className="mt-4">
-                    <EmptyState message="Aucun sujet de fin de stage ne vous a encore été affecté." />
-                  </div>
-                )}
+                  ) : (
+                    <div className="flex flex-col items-center gap-4 py-12 text-center">
+                      <div className="flex h-16 w-16 items-center justify-center rounded-full" style={{ background: "rgba(21,23,61,0.06)" }}>
+                        <svg className="h-8 w-8 text-app-dark/25" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                      </div>
+                      <div>
+                        <p className="font-semibold text-app-dark/50">Aucun sujet affecté</p>
+                        <p className="mt-1 text-xs text-app-dark/35 max-w-xs">Votre sujet de fin de stage apparaîtra ici une fois qu'un encadrant vous l'aura assigné.</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </article>
             ) : null}
 
