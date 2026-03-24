@@ -64,6 +64,10 @@ def validate_profile_requirements(role, matricule, est_civil, corps_id, rank_id,
     if role != UserProfile.ROLE_INSTRUCTEUR and est_civil:
         return Response({"detail": "Only instructeur can be civil"}, status=status.HTTP_400_BAD_REQUEST)
 
+    # Admin is a system role — corps/matricule not required
+    if role == UserProfile.ROLE_ADMIN:
+        return None
+
     requires_military_profile = not (role == UserProfile.ROLE_INSTRUCTEUR and est_civil)
     if requires_military_profile and not matricule:
         return Response({"detail": "matricule is required for military roles"}, status=status.HTTP_400_BAD_REQUEST)
@@ -189,7 +193,10 @@ class MeView(APIView):
 
     def get(self, request):
         user = request.user
-        profile, _ = UserProfile.objects.get_or_create(user=user)
+        profile, created = UserProfile.objects.get_or_create(user=user)
+        if created and user.is_superuser:
+            profile.role = UserProfile.ROLE_ADMIN
+            profile.save(update_fields=["role"])
         return Response(
             {
                 "id": user.id,
@@ -477,6 +484,7 @@ class StageaireDashboardView(APIView):
                         "cours": c.cours.titre,
                         "enonce": c.enonce,
                         "bareme": str(c.bareme),
+                        "has_fichier_enonce": bool(c.fichier_enonce),
                     }
                     for c in controle_ids.select_related("cours").order_by("date_limite")[:20]
                 ],
@@ -548,6 +556,35 @@ class SuperviseurDashboardView(APIView):
                 }
             )
 
+        stagiaires_total = (
+            StagiaireClasse.objects.filter(Q(date_fin__isnull=True) | Q(date_fin__gte=today))
+            .values("stagiaire_id")
+            .distinct()
+            .count()
+        )
+
+        activities = []
+        for c in Controle.objects.exclude(statut=Controle.STATUT_BROUILLON).order_by("-date_publication")[:5]:
+            activities.append({
+                "type": "controle",
+                "label": c.nom,
+                "status": c.statut,
+                "date": c.date_publication.isoformat() if c.date_publication else None,
+            })
+        for e in (
+            Evaluation.objects.filter(est_publiee=True)
+            .select_related("soumission__controle")
+            .order_by("-date_publication")[:5]
+        ):
+            activities.append({
+                "type": "evaluation",
+                "label": f"Note publiée : {e.soumission.controle.nom}",
+                "status": "PUBLIE",
+                "date": e.date_publication.isoformat() if e.date_publication else None,
+            })
+        activities.sort(key=lambda x: x["date"] or "", reverse=True)
+        activities = activities[:8]
+
         return Response(
             {
                 "role": profile.role,
@@ -556,8 +593,10 @@ class SuperviseurDashboardView(APIView):
                     "brigades_count": Brigade.objects.count(),
                     "controles_count": Controle.objects.count(),
                     "published_notes_count": Evaluation.objects.filter(est_publiee=True).count(),
+                    "stagiaires_count": stagiaires_total,
                 },
                 "classes": classes_data,
+                "recent_activities": activities,
                 "notifications": {
                     "unread_count": Notification.objects.filter(destinataire=request.user, est_lue=False).count(),
                 },
@@ -574,23 +613,48 @@ class CoordinateurDashboardView(APIView):
             return Response({"detail": "Forbidden for this role"}, status=status.HTTP_403_FORBIDDEN)
 
         brigades_data = []
-        for brigade in Brigade.objects.all()[:100]:
+        all_stag_ids: set = set()
+        all_avec_note_ids: set = set()
+        all_reussite_ids: set = set()
+
+        for brigade in Brigade.objects.all().order_by("code_brigade")[:100]:
             classes = Classe.objects.filter(brigade=brigade)
             class_ids = list(classes.values_list("id_classe", flat=True))
-            stagiaires_ids = list(
+            stagiaire_ids = list(
                 StagiaireClasse.objects.filter(classe_id__in=class_ids).values_list("stagiaire_id", flat=True)
             )
-            notes_qs = Evaluation.objects.filter(soumission__stagiaire_id__in=stagiaires_ids, est_publiee=True)
-            avg_note = notes_qs.aggregate(avg=models.Avg("note"))["avg"]
-            brigades_data.append(
-                {
-                    "brigade_code": brigade.code_brigade,
-                    "classes_count": classes.count(),
-                    "stagiaires_count": len(set(stagiaires_ids)),
-                    "published_notes_count": notes_qs.count(),
-                    "note_moyenne": round(float(avg_note), 2) if avg_note is not None else None,
-                }
+            stagiaire_ids_set = set(stagiaire_ids)
+
+            stag_avgs = (
+                Evaluation.objects.filter(soumission__stagiaire_id__in=stagiaire_ids, est_publiee=True)
+                .values("soumission__stagiaire_id")
+                .annotate(avg=models.Avg("note"))
             )
+            avec_note_ids = {row["soumission__stagiaire_id"] for row in stag_avgs}
+            reussite_ids = {row["soumission__stagiaire_id"] for row in stag_avgs if float(row["avg"]) >= 10}
+
+            notes_qs = Evaluation.objects.filter(soumission__stagiaire_id__in=stagiaire_ids, est_publiee=True)
+            avg_note = notes_qs.aggregate(avg=models.Avg("note"))["avg"]
+            taux = round(len(reussite_ids) / len(avec_note_ids) * 100, 1) if avec_note_ids else None
+            soumissions_count = SoumissionControle.objects.filter(stagiaire_id__in=stagiaire_ids).count()
+
+            all_stag_ids.update(stagiaire_ids_set)
+            all_avec_note_ids.update(avec_note_ids)
+            all_reussite_ids.update(reussite_ids)
+
+            brigades_data.append({
+                "brigade_code": brigade.code_brigade,
+                "classes_count": classes.count(),
+                "stagiaires_count": len(stagiaire_ids_set),
+                "avec_notes_count": len(avec_note_ids),
+                "published_notes_count": notes_qs.count(),
+                "note_moyenne": round(float(avg_note), 2) if avg_note is not None else None,
+                "taux_reussite": taux,
+                "soumissions_count": soumissions_count,
+            })
+
+        global_notes_avg = Evaluation.objects.filter(est_publiee=True).aggregate(avg=models.Avg("note"))["avg"]
+        global_taux = round(len(all_reussite_ids) / len(all_avec_note_ids) * 100, 1) if all_avec_note_ids else None
 
         return Response(
             {
@@ -600,12 +664,205 @@ class CoordinateurDashboardView(APIView):
                     "controls_total": Controle.objects.count(),
                     "controls_published": Controle.objects.filter(statut=Controle.STATUT_PUBLIE).count(),
                     "notes_published": Evaluation.objects.filter(est_publiee=True).count(),
+                    "taux_reussite_global": global_taux,
+                    "avancement_moyen": round(float(global_notes_avg), 2) if global_notes_avg is not None else None,
+                    "stagiaires_total": len(all_stag_ids),
                 },
                 "notifications": {
                     "unread_count": Notification.objects.filter(destinataire=request.user, est_lue=False).count(),
                 },
             }
         )
+
+
+class CoordinateurReportExportView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def _build_rows(self):
+        rows = []
+        for brigade in Brigade.objects.all().order_by("code_brigade"):
+            classes = Classe.objects.filter(brigade=brigade)
+            class_ids = list(classes.values_list("id_classe", flat=True))
+            stagiaire_ids = list(
+                StagiaireClasse.objects.filter(classe_id__in=class_ids).values_list("stagiaire_id", flat=True)
+            )
+            stagiaire_ids_set = set(stagiaire_ids)
+            stag_avgs = (
+                Evaluation.objects.filter(soumission__stagiaire_id__in=stagiaire_ids, est_publiee=True)
+                .values("soumission__stagiaire_id")
+                .annotate(avg=models.Avg("note"))
+            )
+            avec_note_ids = {row["soumission__stagiaire_id"] for row in stag_avgs}
+            reussite_ids = {row["soumission__stagiaire_id"] for row in stag_avgs if float(row["avg"]) >= 10}
+            notes_qs = Evaluation.objects.filter(soumission__stagiaire_id__in=stagiaire_ids, est_publiee=True)
+            avg_note = notes_qs.aggregate(avg=models.Avg("note"))["avg"]
+            taux = round(len(reussite_ids) / len(avec_note_ids) * 100, 1) if avec_note_ids else ""
+            soumissions = SoumissionControle.objects.filter(stagiaire_id__in=stagiaire_ids).count()
+            rows.append([
+                brigade.code_brigade,
+                classes.count(),
+                len(stagiaire_ids_set),
+                len(avec_note_ids),
+                notes_qs.count(),
+                round(float(avg_note), 2) if avg_note is not None else "",
+                taux,
+                soumissions,
+            ])
+        return rows
+
+    def get(self, request):
+        profile, _ = UserProfile.objects.get_or_create(user=request.user)
+        if profile.role != UserProfile.ROLE_COORDINATEUR:
+            return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+        fmt = request.query_params.get("format", "csv")
+        headers = ["Brigade", "Classes", "Stagiaires", "Avec notes", "Notes publiées", "Moyenne (/20)", "Taux réussite (%)", "Soumissions"]
+        rows = self._build_rows()
+
+        if fmt == "xlsx":
+            return self._export_xlsx(headers, rows)
+        return self._export_csv(headers, rows)
+
+    def _export_csv(self, headers, rows):
+        import csv
+        from django.http import HttpResponse
+        response = HttpResponse(content_type="text/csv; charset=utf-8-sig")
+        response["Content-Disposition"] = 'attachment; filename="rapport_coordinateur.csv"'
+        writer = csv.writer(response)
+        writer.writerow(headers)
+        for r in rows:
+            writer.writerow(r)
+        return response
+
+    def _export_xlsx(self, headers, rows):
+        import io
+        from django.http import HttpResponse
+        try:
+            import openpyxl
+            from openpyxl.styles import Font, PatternFill, Alignment
+        except ImportError:
+            return self._export_csv(headers, rows)
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Rapport Coordinateur"
+        ws.append(headers)
+        for cell in ws[1]:
+            cell.font = Font(bold=True, color="FFFFFF")
+            cell.fill = PatternFill(start_color="15173D", end_color="15173D", fill_type="solid")
+            cell.alignment = Alignment(horizontal="center")
+        for r in rows:
+            ws.append(r)
+        for col in ws.columns:
+            max_len = max((len(str(c.value)) for c in col if c.value is not None), default=10)
+            ws.column_dimensions[col[0].column_letter].width = max_len + 4
+
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        response = HttpResponse(buf.read(), content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        response["Content-Disposition"] = 'attachment; filename="rapport_coordinateur.xlsx"'
+        return response
+
+
+def _compute_class_leaderboard(classe, today):
+    """Return a sorted leaderboard list for a given Classe instance."""
+    stag_links = (
+        StagiaireClasse.objects.filter(classe=classe)
+        .filter(Q(date_fin__isnull=True) | Q(date_fin__gte=today))
+        .select_related("stagiaire")
+    )
+    seen = set()
+    entries = []
+    for link in stag_links:
+        stag = link.stagiaire
+        if stag.id in seen:
+            continue
+        seen.add(stag.id)
+        evals = Evaluation.objects.filter(soumission__stagiaire=stag, est_publiee=True)
+        avg_result = evals.aggregate(avg=models.Avg("note"))
+        avg = round(float(avg_result["avg"]), 2) if avg_result["avg"] is not None else None
+        entries.append({"user": stag, "moyenne": avg, "count": evals.count()})
+
+    ranked = sorted([e for e in entries if e["moyenne"] is not None], key=lambda x: -x["moyenne"])
+    unranked = [e for e in entries if e["moyenne"] is None]
+
+    leaderboard = []
+    rank = 1
+    for i, e in enumerate(ranked):
+        r = leaderboard[-1]["rank"] if (i > 0 and e["moyenne"] == ranked[i - 1]["moyenne"]) else rank
+        leaderboard.append({
+            "rank": r,
+            "username": e["user"].username,
+            "user_id": e["user"].id,
+            "moyenne": e["moyenne"],
+            "evaluations_count": e["count"],
+        })
+        rank += 1
+    for e in unranked:
+        leaderboard.append({
+            "rank": None,
+            "username": e["user"].username,
+            "user_id": e["user"].id,
+            "moyenne": None,
+            "evaluations_count": 0,
+        })
+    return leaderboard
+
+
+class StageaireClassementView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        profile, _ = UserProfile.objects.get_or_create(user=request.user)
+        if profile.role != UserProfile.ROLE_STAGIAIRE:
+            return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+        today = timezone.now().date()
+        my_classes = (
+            StagiaireClasse.objects.filter(stagiaire=request.user)
+            .filter(Q(date_fin__isnull=True) | Q(date_fin__gte=today))
+            .select_related("classe")
+        )
+        classes_data = []
+        for sc in my_classes:
+            leaderboard = _compute_class_leaderboard(sc.classe, today)
+            my_entry = next((e for e in leaderboard if e["user_id"] == request.user.id), None)
+            # Add is_me flag per row
+            for e in leaderboard:
+                e["is_me"] = e["user_id"] == request.user.id
+            classes_data.append({
+                "classe_code": sc.classe.code_classe,
+                "classe_label": sc.classe.libelle,
+                "my_rank": my_entry["rank"] if my_entry else None,
+                "my_moyenne": my_entry["moyenne"] if my_entry else None,
+                "total": len(leaderboard),
+                "leaderboard": leaderboard,
+            })
+        return Response({"classes": classes_data})
+
+
+class AdminClassementView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        profile, _ = UserProfile.objects.get_or_create(user=request.user)
+        if profile.role != UserProfile.ROLE_ADMIN:
+            return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+        today = timezone.now().date()
+        classes_data = []
+        for classe in Classe.objects.all().order_by("code_classe"):
+            leaderboard = _compute_class_leaderboard(classe, today)
+            if not leaderboard:
+                continue
+            classes_data.append({
+                "classe_code": classe.code_classe,
+                "classe_label": classe.libelle,
+                "total": len(leaderboard),
+                "leaderboard": leaderboard,
+            })
+        return Response({"classes": classes_data})
 
 
 class AdminDashboardView(APIView):

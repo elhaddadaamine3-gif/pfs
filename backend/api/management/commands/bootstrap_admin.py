@@ -10,10 +10,10 @@ class Command(BaseCommand):
     help = "Create or update a bootstrap admin account and sync its profile role."
 
     def add_arguments(self, parser):
-        parser.add_argument("--username", default=os.getenv("DJANGO_ADMIN_USERNAME", "admin"))
+        parser.add_argument("--username", default=os.getenv("DJANGO_ADMIN_USERNAME"), required=not os.getenv("DJANGO_ADMIN_USERNAME"), help="Username for the admin account (required; use a unique value per admin)")
         parser.add_argument("--email", default=os.getenv("DJANGO_ADMIN_EMAIL", "admin@example.com"))
         parser.add_argument("--password", default=os.getenv("DJANGO_ADMIN_PASSWORD"))
-        parser.add_argument("--matricule", default=os.getenv("DJANGO_ADMIN_MATRICULE", "ADM-0001"))
+        parser.add_argument("--matricule", default=os.getenv("DJANGO_ADMIN_MATRICULE", ""))
 
     def handle(self, *args, **options):
         username = options["username"]

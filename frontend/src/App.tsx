@@ -51,7 +51,7 @@ type StageaireDashboardData = {
   cours_list: Array<{ id: string; titre: string; matiere: string; description: string; instructeur: string; controles_count: number }>;
   modules_list: Array<{ id: string; nom: string; matieres: Array<{ id: string; nom: string; cours_count: number }> }>;
   controls: { available_count: number; submitted_count: number; pending_count: number };
-  controls_list: Array<{ id: string; name: string; deadline: string | null; cours: string; enonce: string; bareme: string }>;
+  controls_list: Array<{ id: string; name: string; deadline: string | null; cours: string; enonce: string; bareme: string; has_fichier_enonce: boolean }>;
   submitted_control_ids: string[];
   soumissions_detail: Array<{ soumission_id: string; controle_id: string; controle_name: string; statut: string; submitted_at: string; has_fichier: boolean; note: string | null; correction_publiee: string | null; correction_titre: string | null }>;
   notes: Array<{ controle: string; note: string; published_at: string | null }>;
@@ -66,6 +66,7 @@ type SuperviseurDashboardData = {
     brigades_count: number;
     controles_count: number;
     published_notes_count: number;
+    stagiaires_count: number;
   };
   classes: Array<{
     classe_code: string;
@@ -74,6 +75,12 @@ type SuperviseurDashboardData = {
     controles_count: number;
     notes_published_count: number;
     note_moyenne: number | null;
+  }>;
+  recent_activities: Array<{
+    type: string;
+    label: string;
+    status: string;
+    date: string | null;
   }>;
   notifications: { unread_count: number };
 };
@@ -85,12 +92,18 @@ type CoordinateurDashboardData = {
       brigade_code: string;
       classes_count: number;
       stagiaires_count: number;
+      avec_notes_count: number;
       published_notes_count: number;
       note_moyenne: number | null;
+      taux_reussite: number | null;
+      soumissions_count: number;
     }>;
     controls_total: number;
     controls_published: number;
     notes_published: number;
+    taux_reussite_global: number | null;
+    avancement_moyen: number | null;
+    stagiaires_total: number;
   };
   notifications: { unread_count: number };
 };
@@ -112,6 +125,25 @@ type AdminDashboardData = {
     role: string;
   }>;
 };
+
+type ClassementEntry = {
+  rank: number | null;
+  username: string;
+  user_id: number;
+  moyenne: number | null;
+  evaluations_count: number;
+  is_me?: boolean;
+};
+type ClassementClass = {
+  classe_code: string;
+  classe_label: string;
+  my_rank?: number | null;
+  my_moyenne?: number | null;
+  total: number;
+  leaderboard: ClassementEntry[];
+};
+type StageaireClassementData = { classes: ClassementClass[] };
+type AdminClassementData = { classes: Omit<ClassementClass, "my_rank" | "my_moyenne">[] };
 
 type SubjectData = { id: string; label: string };
 type SubjectControlData = {
@@ -790,6 +822,8 @@ function DashboardPage({
   const [selectedBrochure, setSelectedBrochure] = useState<{ id: string; nom: string; matiere_nom: string; module_nom: string; cours: Array<{ id: string; titre: string; description: string; instructeur: string; controles_count: number }> } | null>(null);
   const [modulesExpanded, setModulesExpanded] = useState(false);
   const [superviseurData, setSuperviseurData] = useState<SuperviseurDashboardData | null>(null);
+  const [superviseurSearch, setSuperviseurSearch] = useState("");
+  const [superviseurPerfFilter, setSuperviseurPerfFilter] = useState("all");
   const [coordinateurData, setCoordinateurData] = useState<CoordinateurDashboardData | null>(null);
   const [adminData, setAdminData] = useState<AdminDashboardData | null>(null);
 
@@ -804,6 +838,9 @@ function DashboardPage({
   const [controlName, setControlName] = useState("");
   const [controlPrompt, setControlPrompt] = useState("");
   const [controlEnonceFichier, setControlEnonceFichier] = useState<File | null>(null);
+  const [detailControleId, setDetailControleId] = useState<string | null>(null);
+  const [detailControlePdf, setDetailControlePdf] = useState<{ base64: string; name: string } | null>(null);
+  const [detailControlePdfLoading, setDetailControlePdfLoading] = useState(false);
   const [submissionAnswers, setSubmissionAnswers] = useState<Record<string, string>>({});
   const [submissionFiles, setSubmissionFiles] = useState<Record<string, File>>({});
   const [evalNote, setEvalNote] = useState<Record<string, string>>({});
@@ -816,9 +853,10 @@ function DashboardPage({
     files: Record<string, { base64: string; name: string; mimeType: string }>;
   } | null>(null);
   const [lessonModalLoading, setLessonModalLoading] = useState(false);
-  const [instructeurView, setInstructeurView] = useState<"dashboard" | "cours" | "controles" | "corriger" | "reponse_controle" | "sujet">("dashboard");
-  const [stageaireView, setStageaireView] = useState<"dashboard" | "cours" | "controles" | "reponse_controle" | "sujet">("dashboard");
-  const [adminView, setAdminView] = useState<"overview" | "users" | "accounts" | "subjects" | "classes" | "references" | "events">("overview");
+  const [instructeurView, setInstructeurView] = useState<"dashboard" | "cours" | "controles" | "corriger" | "sujet">("dashboard");
+  const [stageaireView, setStageaireView] = useState<"dashboard" | "cours" | "controles" | "sujet" | "classement">("dashboard");
+  const [coordinateurView, setCoordinateurView] = useState<"dashboard" | "reporting" | "export">("dashboard");
+  const [adminView, setAdminView] = useState<"overview" | "users" | "accounts" | "subjects" | "classes" | "references" | "events" | "classement">("overview");
   const [selectedAdminUser, setSelectedAdminUser] = useState<AdminDashboardData["users"][number] | null>(null);
   const [subjects, setSubjects] = useState<SubjectData[]>([]);
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>("");
@@ -851,6 +889,8 @@ function DashboardPage({
   const [showAccountPassword, setShowAccountPassword] = useState(false);
   const [resetPasswordState, setResetPasswordState] = useState<Record<number, { value: string; show: boolean; saved: string }>>({});
   const [emailResetState, setEmailResetState] = useState<Record<number, "idle" | "loading" | "sent" | "no_email" | "error">>({});
+  const [classementData, setClassementData] = useState<StageaireClassementData | null>(null);
+  const [adminClassementData, setAdminClassementData] = useState<AdminClassementData | null>(null);
   const [csvFileName, setCsvFileName] = useState("");
   const [csvErrors, setCsvErrors] = useState<Array<{ line: number; error: string }>>([]);
   const [classesData, setClassesData] = useState<AdminClassData[]>([]);
@@ -997,7 +1037,27 @@ function DashboardPage({
     if (adminView === "users" || adminView === "accounts" || adminView === "classes") {
       void reloadAdminData();
     }
+    if (adminView === "classement") {
+      void loadAdminClassement();
+    }
   }, [adminView]);
+
+  useEffect(() => {
+    if (!user || user.role !== "Stagiaire") return;
+    if (stageaireView === "classement") {
+      void loadClassement();
+    }
+  }, [stageaireView]);
+
+  const loadClassement = async () => {
+    const r = await apiFetch("/api/stageaire/classement/");
+    if (r.ok) { const d: StageaireClassementData = await r.json(); setClassementData(d); }
+  };
+
+  const loadAdminClassement = async () => {
+    const r = await apiFetch("/api/admin/classement/");
+    if (r.ok) { const d: AdminClassementData = await r.json(); setAdminClassementData(d); }
+  };
 
   const handleCreateCourse = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -1329,6 +1389,34 @@ function DashboardPage({
     }
   };
 
+  const handleExportCSV = async () => {
+    const response = await apiFetch("/api/coordinateur/report/export/?format=csv");
+    if (!response.ok) return;
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "rapport_coordinateur.csv";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExportXLSX = async () => {
+    const response = await apiFetch("/api/coordinateur/report/export/?format=xlsx");
+    if (!response.ok) return;
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "rapport_coordinateur.xlsx";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   const handleCreateAccount = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const response = await apiFetch("/api/admin/accounts/create/", {
@@ -1480,6 +1568,17 @@ function DashboardPage({
     } else {
       triggerDownload(data.fichier_base64, name, mime);
     }
+  };
+
+  const loadDetailControlePdf = async (controleId: string) => {
+    setDetailControlePdfLoading(true);
+    setDetailControlePdf(null);
+    const response = await apiFetch(`/api/stageaire/controles/${controleId}/fichier/`);
+    if (response.ok) {
+      const data: { fichier_base64: string; nom_fichier: string; mime_type: string } = await response.json();
+      setDetailControlePdf({ base64: data.fichier_base64, name: data.nom_fichier || "enonce.pdf" });
+    }
+    setDetailControlePdfLoading(false);
   };
 
   const readFileAsBase64 = (file: File): Promise<string> =>
@@ -1702,32 +1801,30 @@ function DashboardPage({
       ) : null}
 
       {user.role === "Instructeur" && instructeurData ? (
-        <section className="mt-6 grid gap-5">
-          {/* Tab bar */}
-          <div className="flex gap-2 flex-wrap">
-            {(["dashboard", "cours", "controles", "corriger", "reponse_controle", "sujet"] as const).map((tab) => {
-              const labels = { dashboard: "Tableau de bord", cours: "Cours", controles: "Contrôles", corriger: "Corriger contrôle", reponse_controle: "Réponse contrôle", sujet: "Sujet fin de stage" };
-              const badge = tab === "corriger" && instructeurData.controles.pending_corrections > 0
-                ? ` (${instructeurData.controles.pending_corrections})`
-                : tab === "cours" ? ` (${instructeurData.cours.total})` : tab === "controles" ? ` (${instructeurData.controles.total})` : tab === "sujet" ? ` (${instructeurData.sujets_fin_stage.total})` : "";
-              const active = instructeurView === tab;
-              return (
-                <button
-                  key={tab}
-                  type="button"
-                  onClick={() => setInstructeurView(tab)}
-                  className="rounded-lg px-4 py-2 text-sm font-semibold transition"
-                  style={{
-                    background: active ? "#15173D" : "white",
-                    color: active ? "white" : "#15173D",
-                    border: "1px solid #E491C9",
-                  }}
-                >
-                  {labels[tab]}{badge}
-                </button>
-              );
-            })}
-          </div>
+        <section className="mt-6 grid gap-5 md:grid-cols-[220px_1fr]">
+          {/* Sidebar */}
+          <aside className="sidebar-animated card-hover rounded-2xl border border-app-muted bg-white p-4 shadow-sm self-start">
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-app-accent">Espace Instructeur</p>
+            <div className="mt-3 grid gap-1">
+              <AdminNavButton active={instructeurView === "dashboard"} onClick={() => setInstructeurView("dashboard")}>
+                Tableau de bord
+              </AdminNavButton>
+              <AdminNavButton active={instructeurView === "cours"} onClick={() => setInstructeurView("cours")}>
+                Cours ({instructeurData.cours.total})
+              </AdminNavButton>
+              <AdminNavButton active={instructeurView === "controles"} onClick={() => setInstructeurView("controles")}>
+                Contrôles ({instructeurData.controles.total})
+              </AdminNavButton>
+              <AdminNavButton active={instructeurView === "corriger"} onClick={() => setInstructeurView("corriger")}>
+                Corriger{instructeurData.controles.pending_corrections > 0 ? ` (${instructeurData.controles.pending_corrections})` : ""}
+              </AdminNavButton>
+              <AdminNavButton active={instructeurView === "sujet"} onClick={() => setInstructeurView("sujet")}>
+                Sujet fin de stage ({instructeurData.sujets_fin_stage.total})
+              </AdminNavButton>
+            </div>
+          </aside>
+          {/* Content */}
+          <div className="min-w-0 grid gap-5 content-start">
 
           {/* Dashboard */}
           {instructeurView === "dashboard" ? (
@@ -1985,6 +2082,48 @@ function DashboardPage({
                   {instructeurData.controles_list.length === 0 ? <EmptyState message="Aucun contrôle créé." /> : null}
                 </div>
               </article>
+
+              <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
+                <h3 className="text-lg font-semibold">Corrections officielles</h3>
+                <p className="mt-1 text-sm text-app-dark/60">Publiez la correction modèle pour chaque contrôle. Les stagiaires pourront la consulter.</p>
+                <div className="mt-4 space-y-3">
+                  {instructeurData.controles_list.map((c) => (
+                    <div className="rounded-xl border border-app-muted p-4" key={c.id}>
+                      <div className="flex items-start gap-3 mb-3">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white" style={{ background: "#15173D" }}>
+                          {c.name[0]?.toUpperCase()}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-app-dark">{c.name}</p>
+                          <p className="text-xs text-app-dark/50">{c.cours_title}</p>
+                        </div>
+                        <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-semibold ${c.status === "PUBLIE" ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"}`}>
+                          {c.status}
+                        </span>
+                      </div>
+                      <label className="grid gap-1 text-xs font-semibold uppercase tracking-wide text-app-dark/50">
+                        Texte de la correction officielle
+                        <textarea
+                          rows={3}
+                          className="rounded-lg border border-app-muted bg-app-soft px-3 py-2 text-sm font-normal normal-case tracking-normal outline-none focus:border-app-accent focus:ring-2 focus:ring-app-accent/20 resize-none"
+                          placeholder="Rédigez la correction modèle…"
+                          value={correctionText[c.id] ?? ""}
+                          onChange={(e) => setCorrectionText((prev) => ({ ...prev, [c.id]: e.target.value }))}
+                        />
+                      </label>
+                      <button
+                        className="mt-2 rounded-lg bg-app-dark px-4 py-1.5 text-xs font-semibold text-white transition hover:opacity-80 disabled:opacity-40"
+                        type="button"
+                        disabled={!correctionText[c.id]}
+                        onClick={() => void handlePublishCorrection(c.id)}
+                      >
+                        Publier correction
+                      </button>
+                    </div>
+                  ))}
+                  {instructeurData.controles_list.length === 0 ? <EmptyState message="Aucun contrôle pour le moment." /> : null}
+                </div>
+              </article>
             </>
           ) : null}
 
@@ -2140,33 +2279,6 @@ function DashboardPage({
             </>
           ) : null}
 
-          {/* Réponse contrôle */}
-          {instructeurView === "reponse_controle" ? (
-            <>
-              <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
-                <h3 className="text-lg font-semibold">Corrections officielles publiées</h3>
-                <p className="mt-1 text-sm text-app-dark/60">Publiez la correction modèle pour chaque contrôle. Les stagiaires pourront la consulter.</p>
-                <div className="mt-4 space-y-3">
-                  {instructeurData.controles_list.map((c) => (
-                    <div className="rounded border border-app-muted p-4" key={c.id}>
-                      <p className="text-sm font-semibold">{c.name}</p>
-                      <p className="text-xs text-app-dark/60 mb-3">{c.cours_title} — {c.status}</p>
-                      <Input
-                        label="Texte de la correction officielle"
-                        value={correctionText[c.id] ?? ""}
-                        onChange={(v) => setCorrectionText((prev) => ({ ...prev, [c.id]: v }))}
-                      />
-                      <button className="mt-2 rounded bg-app-dark px-3 py-1.5 text-xs text-white" type="button" onClick={() => void handlePublishCorrection(c.id)}>
-                        Publier correction
-                      </button>
-                    </div>
-                  ))}
-                  {instructeurData.controles_list.length === 0 ? <EmptyState message="Aucun contrôle pour le moment." /> : null}
-                </div>
-              </article>
-            </>
-          ) : null}
-
           {/* Sujet fin de stage */}
           {instructeurView === "sujet" ? (
             <>
@@ -2194,6 +2306,7 @@ function DashboardPage({
               </article>
             </>
           ) : null}
+          </div>
         </section>
       ) : null}
 
@@ -2243,7 +2356,7 @@ function DashboardPage({
                   <button
                     key={tab}
                     type="button"
-                    onClick={() => { setStageaireView(tab); setSelectedModule(null); setSelectedMatiere(null); setSelectedBrochure(null); setSelectedCours(null); setCoursFileCache({}); }}
+                    onClick={() => { setStageaireView(tab); setSelectedModule(null); setSelectedMatiere(null); setSelectedBrochure(null); setSelectedCours(null); setCoursFileCache({}); setDetailControleId(null); setDetailControlePdf(null); }}
                     className="w-full flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition text-left"
                     style={{ background: active ? "#15173D" : "transparent", color: active ? "white" : "#15173D" }}
                   >
@@ -2317,7 +2430,7 @@ function DashboardPage({
                   <button
                     key={tab}
                     type="button"
-                    onClick={() => { setStageaireView(tab); setSelectedModule(null); setSelectedMatiere(null); setSelectedBrochure(null); setSelectedCours(null); setCoursFileCache({}); }}
+                    onClick={() => { setStageaireView(tab); setSelectedModule(null); setSelectedMatiere(null); setSelectedBrochure(null); setSelectedCours(null); setCoursFileCache({}); setDetailControleId(null); setDetailControlePdf(null); }}
                     className="w-full flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition text-left"
                     style={{ background: active ? "#15173D" : "transparent", color: active ? "white" : "#15173D" }}
                   >
@@ -2334,25 +2447,24 @@ function DashboardPage({
                 );
               })}
 
-              {/* Réponses */}
-              {(["reponse_controle"] as const).map((tab) => {
+              {/* Classement */}
+              {(["classement"] as const).map((tab) => {
                 const active = stageaireView === tab;
-                const badge = (stageaireData.soumissions_detail ?? []).length;
                 return (
                   <button
                     key={tab}
                     type="button"
-                    onClick={() => { setStageaireView(tab); setSelectedModule(null); setSelectedMatiere(null); setSelectedBrochure(null); setSelectedCours(null); setCoursFileCache({}); }}
+                    onClick={() => { setStageaireView(tab); setSelectedModule(null); setSelectedMatiere(null); setSelectedBrochure(null); setSelectedCours(null); setCoursFileCache({}); setDetailControleId(null); setDetailControlePdf(null); }}
                     className="w-full flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition text-left"
                     style={{ background: active ? "#15173D" : "transparent", color: active ? "white" : "#15173D" }}
                   >
                     <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth={active ? 2.5 : 2} viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                     </svg>
-                    <span className="flex-1">Mes réponses</span>
-                    {badge > 0 && (
+                    <span className="flex-1">Classement</span>
+                    {stageaireData.notes.length > 0 && (
                       <span className="shrink-0 rounded-full px-1.5 py-0.5 text-xs font-bold leading-none" style={{ background: active ? "rgba(255,255,255,0.2)" : "#e5e7eb", color: active ? "white" : "#374151" }}>
-                        {badge}
+                        {stageaireData.notes.length}
                       </span>
                     )}
                   </button>
@@ -2366,7 +2478,7 @@ function DashboardPage({
                   <button
                     key={tab}
                     type="button"
-                    onClick={() => { setStageaireView(tab); setSelectedModule(null); setSelectedMatiere(null); setSelectedBrochure(null); setSelectedCours(null); setCoursFileCache({}); }}
+                    onClick={() => { setStageaireView(tab); setSelectedModule(null); setSelectedMatiere(null); setSelectedBrochure(null); setSelectedCours(null); setCoursFileCache({}); setDetailControleId(null); setDetailControlePdf(null); }}
                     className="w-full flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition text-left"
                     style={{ background: active ? "#15173D" : "transparent", color: active ? "white" : "#15173D" }}
                   >
@@ -2487,7 +2599,7 @@ function DashboardPage({
 
                   <button
                     type="button"
-                    onClick={() => setStageaireView("reponse_controle")}
+                    onClick={() => { setStageaireView("controles"); setSelectedModule(null); setSelectedMatiere(null); setSelectedBrochure(null); setSelectedCours(null); setCoursFileCache({}); }}
                     className="group flex items-center gap-4 rounded-2xl border border-app-muted bg-white p-5 text-left shadow-sm transition hover:border-app-dark/30 hover:shadow-md"
                   >
                     <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl" style={{ background: "rgba(21,23,61,0.08)" }}>
@@ -2565,7 +2677,7 @@ function DashboardPage({
                             </div>
                           ))}
                           {stageaireData.notes.length > 3 && (
-                            <button type="button" onClick={() => setStageaireView("reponse_controle")} className="text-xs text-app-accent font-semibold hover:underline">
+                            <button type="button" onClick={() => { setStageaireView("controles"); setSelectedModule(null); setSelectedMatiere(null); setSelectedBrochure(null); setSelectedCours(null); setCoursFileCache({}); }} className="text-xs text-app-accent font-semibold hover:underline">
                               +{stageaireData.notes.length - 3} autre{stageaireData.notes.length - 3 > 1 ? "s" : ""} →
                             </button>
                           )}
@@ -2920,196 +3032,258 @@ function DashboardPage({
             {/* ── CONTRÔLES ── */}
             {stageaireView === "controles" ? (
               <>
-                {/* Stats bar */}
-                <div className="grid grid-cols-3 gap-3">
-                  {[
-                    { label: "Disponibles", value: stageaireData.controls.available_count, color: "#15173D", bg: "rgba(21,23,61,0.07)" },
-                    { label: "Soumis", value: stageaireData.controls.submitted_count, color: "#22c55e", bg: "rgba(34,197,94,0.08)" },
-                    { label: "En attente", value: stageaireData.controls.pending_count, color: "#982598", bg: "rgba(152,37,152,0.08)" },
-                  ].map((s) => (
-                    <div key={s.label} className="rounded-2xl border border-app-muted bg-white p-4 text-center shadow-sm">
-                      <p className="text-2xl font-black" style={{ color: s.color }}>{s.value}</p>
-                      <p className="mt-0.5 text-xs text-app-dark/50">{s.label}</p>
-                    </div>
-                  ))}
-                </div>
-
-                <article className="rounded-2xl border border-app-muted bg-white shadow-sm overflow-hidden">
-                  <div className="px-6 py-4 border-b border-app-muted/60" style={{ background: "#15173D" }}>
-                    <h3 className="font-bold text-white">Contrôles à réaliser</h3>
-                    <p className="mt-0.5 text-xs text-white/50">Répondez aux contrôles avant la date limite.</p>
-                  </div>
-                  <div className="p-5 space-y-3">
-                    {stageaireData.controls_list.length > 0 ? stageaireData.controls_list.map((control) => {
-                      const submitted = stageaireData.submitted_control_ids.includes(control.id);
-                      const isOverdue = !submitted && control.deadline && new Date(control.deadline) < new Date();
-                      return (
-                        <div
-                          key={`control-${control.id}`}
-                          className="rounded-xl border p-4 transition"
-                          style={{ borderColor: submitted ? "rgba(34,197,94,0.3)" : isOverdue ? "rgba(239,68,68,0.3)" : "rgba(228,145,201,0.5)", background: submitted ? "rgba(34,197,94,0.04)" : isOverdue ? "rgba(239,68,68,0.03)" : "white" }}
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="flex items-center gap-3 min-w-0">
-                              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg" style={{ background: submitted ? "rgba(34,197,94,0.1)" : "rgba(152,37,152,0.1)" }}>
-                                {submitted ? (
-                                  <svg className="h-4 w-4 text-emerald-600" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-                                ) : (
-                                  <svg className="h-4 w-4 text-app-accent" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
-                                )}
-                              </div>
-                              <div className="min-w-0">
-                                <p className="font-semibold text-sm text-app-dark leading-snug">{control.name}</p>
-                                <p className="mt-0.5 text-xs text-app-dark/50 truncate">Cours : {control.cours}</p>
-                              </div>
-                            </div>
-                            <div className="flex flex-col items-end gap-1.5 shrink-0">
-                              {submitted ? (
-                                <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-700">✓ Soumis</span>
-                              ) : (
-                                <span className="rounded-full px-2 py-0.5 text-xs font-bold text-white" style={{ background: isOverdue ? "#ef4444" : "#f59e0b" }}>
-                                  {isOverdue ? "En retard" : "À faire"}
-                                </span>
-                              )}
-                              {control.deadline && (
-                                <span className="text-xs" style={{ color: isOverdue ? "#ef4444" : "rgba(21,23,61,0.4)" }}>
-                                  {new Date(control.deadline).toLocaleDateString("fr-FR")}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                          {control.bareme ? <p className="mt-2 text-xs text-app-dark/40">Barème : {control.bareme} pts</p> : null}
-                          {control.enonce ? (
-                            <div className="mt-3 rounded-lg border border-app-muted/60 bg-app-soft/60 p-3">
-                              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-app-dark/40">Énoncé</p>
-                              <p className="whitespace-pre-wrap text-sm text-app-dark/80">{control.enonce}</p>
-                            </div>
-                          ) : (
-                            <p className="mt-2 text-xs italic text-app-dark/35">Aucun énoncé textuel — voir le fichier joint.</p>
-                          )}
-                        </div>
-                      );
-                    }) : (
-                      <div className="flex flex-col items-center gap-3 py-10 text-center">
-                        <div className="flex h-14 w-14 items-center justify-center rounded-full" style={{ background: "rgba(21,23,61,0.06)" }}>
-                          <svg className="h-7 w-7 text-app-dark/25" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>
-                        </div>
-                        <div>
-                          <p className="font-semibold text-app-dark/50">Aucun contrôle disponible</p>
-                          <p className="mt-0.5 text-xs text-app-dark/35">Les contrôles assignés à votre classe apparaîtront ici.</p>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </article>
-
-                {stageaireData.notes.length > 0 && (
-                  <article className="rounded-2xl border border-app-muted bg-white shadow-sm overflow-hidden">
-                    <div className="px-6 py-4 border-b border-app-muted/60 flex items-center gap-3">
-                      <svg className="h-4 w-4 text-emerald-600" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" /></svg>
-                      <h3 className="font-bold text-app-dark">Notes publiées</h3>
-                    </div>
-                    <div className="p-5 space-y-2">
-                      {stageaireData.notes.map((note, index) => (
-                        <div key={`${note.controle}-${index}`} className="flex items-center justify-between rounded-xl border border-app-muted/60 bg-app-soft/40 px-4 py-3">
-                          <p className="text-sm text-app-dark/80 flex-1 mr-3 truncate">{note.controle}</p>
-                          <span className="shrink-0 rounded-full px-3 py-1 text-sm font-black text-white" style={{ background: parseFloat(note.note) >= 10 ? "#22c55e" : "#ef4444" }}>
-                            {note.note}/20
-                          </span>
+                {detailControleId === null ? (
+                  <>
+                    {/* Stats bar */}
+                    <div className="grid grid-cols-3 gap-3">
+                      {[
+                        { label: "Disponibles", value: stageaireData.controls.available_count, color: "#15173D" },
+                        { label: "Soumis", value: stageaireData.controls.submitted_count, color: "#22c55e" },
+                        { label: "En attente", value: stageaireData.controls.pending_count, color: "#982598" },
+                      ].map((s) => (
+                        <div key={s.label} className="rounded-2xl border border-app-muted bg-white p-4 text-center shadow-sm">
+                          <p className="text-2xl font-black" style={{ color: s.color }}>{s.value}</p>
+                          <p className="mt-0.5 text-xs text-app-dark/50">{s.label}</p>
                         </div>
                       ))}
                     </div>
-                  </article>
-                )}
-              </>
-            ) : null}
 
-            {/* ── RÉPONSES CONTRÔLES ── */}
-            {stageaireView === "reponse_controle" ? (
-              <article className="rounded-2xl border border-app-muted bg-white shadow-sm overflow-hidden">
-                <div className="px-6 py-4 border-b border-app-muted/60" style={{ background: "#15173D" }}>
-                  <h3 className="font-bold text-white">Mes réponses aux contrôles</h3>
-                  <p className="mt-0.5 text-xs text-white/50">Historique de vos soumissions et corrections officielles.</p>
-                </div>
-                <div className="p-5 space-y-4">
-                  {(stageaireData.soumissions_detail ?? []).length > 0 ? (stageaireData.soumissions_detail ?? []).map((s) => (
-                    <div className="rounded-xl border border-app-muted bg-app-soft/30 p-4" key={s.soumission_id}>
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="text-sm font-bold text-app-dark">{s.controle_name}</p>
-                        <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-bold ${s.statut === "SOUMIS" ? "bg-blue-100 text-blue-700" : s.statut === "RETARD" ? "bg-red-100 text-red-700" : "bg-app-soft text-app-dark/60"}`}>
-                          {s.statut}
-                        </span>
+                    <article className="rounded-2xl border border-app-muted bg-white shadow-sm overflow-hidden">
+                      <div className="px-6 py-4 border-b border-app-muted/60" style={{ background: "#15173D" }}>
+                        <h3 className="font-bold text-white">Contrôles à réaliser</h3>
+                        <p className="mt-0.5 text-xs text-white/50">Cliquez sur un contrôle pour le consulter et soumettre votre réponse.</p>
                       </div>
-                      <p className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-app-dark/50">
-                        <span>Soumis le {new Date(s.submitted_at).toLocaleDateString("fr-FR")}</span>
-                        {s.has_fichier ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-emerald-700 font-semibold">
-                            <svg className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
-                            fichier joint
-                          </span>
-                        ) : null}
-                      </p>
-                      {s.note !== null && (
-                        <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1">
-                          <svg className="h-3.5 w-3.5 text-emerald-600" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-                          <span className="text-sm font-black text-emerald-700">{s.note}/20</span>
+                      <div className="p-5 space-y-3">
+                        {stageaireData.controls_list.length > 0 ? stageaireData.controls_list.map((control) => {
+                          const submitted = stageaireData.submitted_control_ids.includes(control.id);
+                          const isOverdue = !submitted && control.deadline && new Date(control.deadline) < new Date();
+                          return (
+                            <div
+                              key={`control-${control.id}`}
+                              className="rounded-xl border p-4 transition"
+                              style={{ borderColor: submitted ? "rgba(34,197,94,0.3)" : isOverdue ? "rgba(239,68,68,0.3)" : "rgba(228,145,201,0.5)", background: submitted ? "rgba(34,197,94,0.04)" : isOverdue ? "rgba(239,68,68,0.03)" : "white" }}
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="flex items-center gap-3 min-w-0">
+                                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg" style={{ background: submitted ? "rgba(34,197,94,0.1)" : "rgba(152,37,152,0.1)" }}>
+                                    {submitted ? (
+                                      <svg className="h-4 w-4 text-emerald-600" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                                    ) : (
+                                      <svg className="h-4 w-4 text-app-accent" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+                                    )}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="font-semibold text-sm text-app-dark leading-snug">{control.name}</p>
+                                    <p className="mt-0.5 text-xs text-app-dark/50 truncate">Cours : {control.cours}</p>
+                                  </div>
+                                </div>
+                                <div className="flex flex-col items-end gap-1.5 shrink-0">
+                                  {submitted ? (
+                                    <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-700">✓ Soumis</span>
+                                  ) : (
+                                    <span className="rounded-full px-2 py-0.5 text-xs font-bold text-white" style={{ background: isOverdue ? "#ef4444" : "#f59e0b" }}>
+                                      {isOverdue ? "En retard" : "À faire"}
+                                    </span>
+                                  )}
+                                  {control.deadline && (
+                                    <span className="text-xs" style={{ color: isOverdue ? "#ef4444" : "rgba(21,23,61,0.4)" }}>
+                                      {new Date(control.deadline).toLocaleDateString("fr-FR")}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              {control.bareme ? <p className="mt-2 text-xs text-app-dark/40">Barème : {control.bareme} pts</p> : null}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setDetailControleId(control.id);
+                                  setDetailControlePdf(null);
+                                  if (control.has_fichier_enonce) void loadDetailControlePdf(control.id);
+                                }}
+                                className="mt-3 w-full rounded-lg px-3 py-2 text-xs font-semibold text-white transition hover:opacity-90"
+                                style={{ background: "#15173D" }}
+                              >
+                                Voir le contrôle →
+                              </button>
+                            </div>
+                          );
+                        }) : (
+                          <div className="flex flex-col items-center gap-3 py-10 text-center">
+                            <div className="flex h-14 w-14 items-center justify-center rounded-full" style={{ background: "rgba(21,23,61,0.06)" }}>
+                              <svg className="h-7 w-7 text-app-dark/25" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>
+                            </div>
+                            <div>
+                              <p className="font-semibold text-app-dark/50">Aucun contrôle disponible</p>
+                              <p className="mt-0.5 text-xs text-app-dark/35">Les contrôles assignés à votre classe apparaîtront ici.</p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </article>
+
+                    {stageaireData.notes.length > 0 && (
+                      <article className="rounded-2xl border border-app-muted bg-white shadow-sm overflow-hidden">
+                        <div className="px-6 py-4 border-b border-app-muted/60 flex items-center gap-3">
+                          <svg className="h-4 w-4 text-emerald-600" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" /></svg>
+                          <h3 className="font-bold text-app-dark">Notes publiées</h3>
                         </div>
-                      )}
-                      {s.correction_publiee ? (
-                        <div className="mt-3 rounded bg-app-soft p-3">
-                          <p className="text-xs font-semibold text-app-dark/70 mb-1">{s.correction_titre ? `Correction — ${s.correction_titre}` : "Correction officielle"}</p>
-                          <p className="text-sm text-app-dark/80 whitespace-pre-wrap">{s.correction_publiee}</p>
+                        <div className="p-5 space-y-2">
+                          {stageaireData.notes.map((note, index) => (
+                            <div key={`${note.controle}-${index}`} className="flex items-center justify-between rounded-xl border border-app-muted/60 bg-app-soft/40 px-4 py-3">
+                              <p className="text-sm text-app-dark/80 flex-1 mr-3 truncate">{note.controle}</p>
+                              <span className="shrink-0 rounded-full px-3 py-1 text-sm font-black text-white" style={{ background: parseFloat(note.note) >= 10 ? "#22c55e" : "#ef4444" }}>
+                                {note.note}/20
+                              </span>
+                            </div>
+                          ))}
                         </div>
-                      ) : (
-                        <p className="mt-2 text-xs text-app-dark/40 italic">Aucune correction publiée pour ce contrôle.</p>
-                      )}
-                      {/* PDF file picker — always available */}
-                      <div className="mt-3 rounded border border-dashed border-app-muted bg-app-soft/50 p-3">
-                        <div className="mb-2 flex items-center gap-1.5">
-                          <svg className="h-3.5 w-3.5 text-red-500" fill="currentColor" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM6 20V4h5v7h7v9H6z"/></svg>
-                          <p className="text-xs font-semibold text-app-dark/70">
-                            {s.has_fichier ? "Remplacer le fichier PDF" : "Joindre un fichier PDF"}
-                          </p>
+                      </article>
+                    )}
+                  </>
+                ) : (() => {
+                  const ctrl = stageaireData.controls_list.find((c) => c.id === detailControleId);
+                  const soumission = (stageaireData.soumissions_detail ?? []).find((s) => s.controle_id === detailControleId);
+                  const submitted = stageaireData.submitted_control_ids.includes(detailControleId);
+                  const isOverdue = !submitted && ctrl?.deadline && new Date(ctrl.deadline) < new Date();
+                  return (
+                    <>
+                      {/* Header with back button */}
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => { setDetailControleId(null); setDetailControlePdf(null); }}
+                          className="flex items-center gap-1.5 rounded-lg border border-app-muted bg-white px-3 py-2 text-xs font-semibold text-app-dark transition hover:bg-app-soft"
+                        >
+                          <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
+                          Retour
+                        </button>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-app-dark truncate">{ctrl?.name ?? "Contrôle"}</p>
+                          {ctrl?.cours && <p className="text-xs text-app-dark/50 truncate">Cours : {ctrl.cours}</p>}
                         </div>
-                        <label className="grid gap-1 text-xs">
-                          <input
-                            accept=".pdf,application/pdf"
-                            className="rounded border border-app-muted bg-white px-2 py-1 text-xs"
-                            type="file"
-                            onChange={(e) => {
-                              const f = e.target.files?.[0];
-                              if (f) setSubmissionFiles((prev) => ({ ...prev, [s.controle_id]: f }));
-                            }}
-                          />
-                          {submissionFiles[s.controle_id] ? (
-                            <span className="text-app-dark/60">{submissionFiles[s.controle_id].name}</span>
+                        <div className="flex flex-col items-end gap-1 shrink-0">
+                          {submitted ? (
+                            <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-bold text-emerald-700">✓ Soumis</span>
+                          ) : (
+                            <span className="rounded-full px-2.5 py-0.5 text-xs font-bold text-white" style={{ background: isOverdue ? "#ef4444" : "#f59e0b" }}>
+                              {isOverdue ? "En retard" : "À faire"}
+                            </span>
+                          )}
+                          {ctrl?.deadline && (
+                            <span className="text-xs" style={{ color: isOverdue ? "#ef4444" : "rgba(21,23,61,0.4)" }}>
+                              Limite : {new Date(ctrl.deadline).toLocaleDateString("fr-FR")}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Énoncé section */}
+                      <article className="rounded-2xl border border-app-muted bg-white shadow-sm overflow-hidden">
+                        <div className="px-6 py-4 border-b border-app-muted/60" style={{ background: "#15173D" }}>
+                          <h3 className="font-bold text-white">Énoncé</h3>
+                          {ctrl?.bareme ? <p className="mt-0.5 text-xs text-white/50">Barème : {ctrl.bareme} pts</p> : null}
+                        </div>
+                        <div className="p-5 space-y-4">
+                          {ctrl?.enonce ? (
+                            <div className="rounded-lg border border-app-muted/60 bg-app-soft/60 p-4">
+                              <p className="whitespace-pre-wrap text-sm text-app-dark/80">{ctrl.enonce}</p>
+                            </div>
                           ) : null}
-                        </label>
-                        {submissionFiles[s.controle_id] ? (
+                          {detailControlePdfLoading && (
+                            <div className="flex items-center gap-2 py-6 justify-center text-app-dark/50">
+                              <svg className="h-4 w-4 animate-spin" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 100 16v-4l-3 3 3 3v-4a8 8 0 01-8-8z" /></svg>
+                              <span className="text-sm">Chargement du fichier PDF…</span>
+                            </div>
+                          )}
+                          {detailControlePdf && !detailControlePdfLoading && (
+                            <InlinePdfViewer base64={detailControlePdf.base64} name={detailControlePdf.name} />
+                          )}
+                          {!detailControlePdfLoading && !detailControlePdf && !ctrl?.enonce && (
+                            <p className="text-sm italic text-app-dark/40 text-center py-4">Aucun énoncé disponible pour ce contrôle.</p>
+                          )}
+                        </div>
+                      </article>
+
+                      {/* Submit response section */}
+                      <article className="rounded-2xl border border-app-muted bg-white shadow-sm overflow-hidden">
+                        <div className="px-6 py-4 border-b border-app-muted/60" style={{ background: "#15173D" }}>
+                          <h3 className="font-bold text-white">Ma réponse</h3>
+                          <p className="mt-0.5 text-xs text-white/50">Soumettez votre réponse en PDF.</p>
+                        </div>
+                        <div className="p-5 space-y-4">
+                          {/* Existing submission info */}
+                          {soumission && (
+                            <div className="rounded-xl border border-app-muted bg-app-soft/40 p-4 space-y-2">
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="text-sm font-semibold text-app-dark">Soumission actuelle</p>
+                                <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-bold ${soumission.statut === "SOUMIS" ? "bg-blue-100 text-blue-700" : soumission.statut === "RETARD" ? "bg-red-100 text-red-700" : "bg-app-soft text-app-dark/60"}`}>
+                                  {soumission.statut}
+                                </span>
+                              </div>
+                              <p className="text-xs text-app-dark/50">
+                                Soumis le {new Date(soumission.submitted_at).toLocaleDateString("fr-FR")}
+                                {soumission.has_fichier && (
+                                  <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-emerald-700 font-semibold">
+                                    <svg className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
+                                    fichier joint
+                                  </span>
+                                )}
+                              </p>
+                              {soumission.note !== null && (
+                                <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1">
+                                  <svg className="h-3.5 w-3.5 text-emerald-600" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                                  <span className="text-sm font-black text-emerald-700">{soumission.note}/20</span>
+                                </div>
+                              )}
+                              {soumission.correction_publiee ? (
+                                <div className="rounded bg-app-soft p-3">
+                                  <p className="text-xs font-semibold text-app-dark/70 mb-1">{soumission.correction_titre ? `Correction — ${soumission.correction_titre}` : "Correction officielle"}</p>
+                                  <p className="text-sm text-app-dark/80 whitespace-pre-wrap">{soumission.correction_publiee}</p>
+                                </div>
+                              ) : (
+                                <p className="text-xs text-app-dark/40 italic">Aucune correction publiée pour ce contrôle.</p>
+                              )}
+                            </div>
+                          )}
+                          {/* File upload */}
+                          <div className="rounded-xl border border-dashed border-app-muted bg-app-soft/50 p-4">
+                            <div className="mb-3 flex items-center gap-2">
+                              <svg className="h-4 w-4 text-red-500" fill="currentColor" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM6 20V4h5v7h7v9H6z"/></svg>
+                              <p className="text-sm font-semibold text-app-dark/70">
+                                {soumission?.has_fichier ? "Remplacer le fichier PDF" : "Joindre votre réponse en PDF"}
+                              </p>
+                            </div>
+                            <input
+                              accept=".pdf,application/pdf"
+                              className="block w-full rounded-lg border border-app-muted bg-white px-3 py-2 text-sm text-app-dark file:mr-3 file:rounded file:border-0 file:bg-app-dark file:px-3 file:py-1 file:text-xs file:font-semibold file:text-white"
+                              type="file"
+                              onChange={(e) => {
+                                const f = e.target.files?.[0];
+                                if (f) setSubmissionFiles((prev) => ({ ...prev, [detailControleId]: f }));
+                              }}
+                            />
+                            {submissionFiles[detailControleId] && (
+                              <p className="mt-1.5 text-xs text-app-dark/60">{submissionFiles[detailControleId].name}</p>
+                            )}
+                          </div>
+                          {actionMessage && (
+                            <p className="rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-2.5 text-sm font-medium text-emerald-700">{actionMessage}</p>
+                          )}
                           <button
-                            className="mt-2 rounded bg-app-dark px-3 py-1.5 text-xs text-white"
                             type="button"
-                            onClick={() => void handleSubmitAnswer(s.controle_id)}
+                            disabled={!submissionFiles[detailControleId]}
+                            onClick={() => void handleSubmitAnswer(detailControleId)}
+                            className="w-full rounded-xl px-4 py-3 text-sm font-bold text-white transition disabled:opacity-40"
+                            style={{ background: "#982598" }}
                           >
-                            {s.has_fichier ? "Remplacer" : "Attacher le fichier"}
+                            {soumission?.has_fichier ? "Remplacer ma réponse" : "Soumettre ma réponse"}
                           </button>
-                        ) : null}
-                      </div>
-                    </div>
-                  )) : null}
-                  {(stageaireData.soumissions_detail ?? []).length === 0 && (
-                    <div className="flex flex-col items-center gap-3 py-10 text-center">
-                      <div className="flex h-14 w-14 items-center justify-center rounded-full" style={{ background: "rgba(21,23,61,0.06)" }}>
-                        <svg className="h-7 w-7 text-app-dark/25" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
-                      </div>
-                      <div>
-                        <p className="font-semibold text-app-dark/50">Aucune réponse soumise</p>
-                        <p className="mt-0.5 text-xs text-app-dark/35">Vos réponses aux contrôles apparaîtront ici.</p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </article>
+                        </div>
+                      </article>
+                    </>
+                  );
+                })()}
+              </>
             ) : null}
 
             {/* ── SUJET FIN DE STAGE ── */}
@@ -3164,52 +3338,366 @@ function DashboardPage({
               </article>
             ) : null}
 
+            {/* ── CLASSEMENT ── */}
+            {stageaireView === "classement" ? (
+              <div className="space-y-6">
+                {!classementData ? (
+                  <div className="flex items-center justify-center py-16">
+                    <svg className="h-6 w-6 animate-spin text-app-accent" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" /></svg>
+                  </div>
+                ) : classementData.classes.length === 0 ? (
+                  <article className="rounded-2xl border border-app-muted bg-white p-10 shadow-sm text-center">
+                    <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full" style={{ background: "rgba(21,23,61,0.06)" }}>
+                      <svg className="h-7 w-7 text-app-dark/25" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+                    </div>
+                    <p className="font-semibold text-app-dark/50">Aucune classe assignée</p>
+                    <p className="mt-1 text-xs text-app-dark/35">Le classement sera disponible une fois affecté à une classe.</p>
+                  </article>
+                ) : classementData.classes.map((cls) => (
+                  <div key={cls.classe_code} className="space-y-4">
+                    {/* Summary cards */}
+                    <div className="grid grid-cols-3 gap-3">
+                      {[
+                        { label: "Votre rang", value: cls.my_rank != null ? `${cls.my_rank}${cls.my_rank === 1 ? "er" : "ème"}` : "—", sub: `sur ${cls.total}`, color: "#15173D", bg: "rgba(21,23,61,0.07)" },
+                        { label: "Votre moyenne", value: cls.my_moyenne != null ? `${cls.my_moyenne}/20` : "—", sub: "notes publiées", color: cls.my_moyenne != null ? (cls.my_moyenne >= 10 ? "#16a34a" : "#dc2626") : "#6b7280", bg: cls.my_moyenne != null ? (cls.my_moyenne >= 10 ? "rgba(34,197,94,0.08)" : "rgba(239,68,68,0.06)") : "rgba(21,23,61,0.04)" },
+                        { label: "Classe", value: cls.classe_code, sub: cls.classe_label || cls.classe_code, color: "#982598", bg: "rgba(152,37,152,0.07)" },
+                      ].map((s) => (
+                        <div key={s.label} className="rounded-2xl border border-app-muted p-4 text-center shadow-sm" style={{ background: s.bg }}>
+                          <p className="text-2xl font-black" style={{ color: s.color }}>{s.value}</p>
+                          <p className="mt-0.5 text-xs font-semibold text-app-dark/50">{s.label}</p>
+                          <p className="text-[10px] text-app-dark/35">{s.sub}</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Leaderboard table */}
+                    <article className="rounded-2xl border border-app-muted bg-white shadow-sm overflow-hidden">
+                      <div className="px-6 py-4 border-b border-app-muted/60 flex items-center justify-between" style={{ background: "#15173D" }}>
+                        <div>
+                          <h3 className="font-bold text-white">Classement — {cls.classe_label || cls.classe_code}</h3>
+                          <p className="mt-0.5 text-xs text-white/50">{cls.total} stagiaire(s) · notes publiées uniquement</p>
+                        </div>
+                        <button type="button" onClick={() => void loadClassement()} className="flex items-center gap-1 rounded-lg border border-white/20 px-3 py-1.5 text-xs font-semibold text-white/80 hover:bg-white/10 transition">
+                          <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                          Actualiser
+                        </button>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full text-sm">
+                          <thead>
+                            <tr className="border-b border-app-muted/60 text-left text-xs font-semibold uppercase tracking-wide text-app-dark/40">
+                              <th className="px-5 py-3 w-14">Rang</th>
+                              <th className="px-4 py-3">Stagiaire</th>
+                              <th className="px-4 py-3 text-right">Moyenne</th>
+                              <th className="px-4 py-3 text-right">Notes</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {cls.leaderboard.map((entry, idx) => {
+                              const medal = entry.rank === 1 ? "🥇" : entry.rank === 2 ? "🥈" : entry.rank === 3 ? "🥉" : null;
+                              const barPct = entry.moyenne != null ? (entry.moyenne / 20) * 100 : 0;
+                              return (
+                                <tr
+                                  key={`entry-${idx}`}
+                                  className="border-b border-app-muted/40 last:border-0"
+                                  style={{ background: entry.is_me ? "rgba(152,37,152,0.05)" : "transparent" }}
+                                >
+                                  <td className="px-5 py-3 text-center">
+                                    {medal ? (
+                                      <span className="text-lg leading-none">{medal}</span>
+                                    ) : (
+                                      <span className="text-sm font-bold" style={{ color: entry.rank ? "#15173D" : "#9ca3af" }}>{entry.rank ?? "—"}</span>
+                                    )}
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <div className="flex items-center gap-2">
+                                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white" style={{ background: entry.is_me ? "#982598" : "#15173D" }}>
+                                        {entry.username[0]?.toUpperCase()}
+                                      </div>
+                                      <span className="font-medium text-app-dark">{entry.username}</span>
+                                      {entry.is_me && <span className="rounded-full bg-app-accent px-2 py-0.5 text-[10px] font-bold text-white">Vous</span>}
+                                    </div>
+                                  </td>
+                                  <td className="px-4 py-3 text-right">
+                                    {entry.moyenne != null ? (
+                                      <div className="flex flex-col items-end gap-1">
+                                        <span className="font-black text-sm" style={{ color: entry.moyenne >= 10 ? "#16a34a" : "#dc2626" }}>{entry.moyenne}/20</span>
+                                        <div className="h-1.5 w-20 rounded-full bg-app-muted overflow-hidden">
+                                          <div className="h-full rounded-full transition-all" style={{ width: `${barPct}%`, background: entry.moyenne >= 10 ? "#22c55e" : "#ef4444" }} />
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <span className="text-xs italic text-app-dark/30">Non noté</span>
+                                    )}
+                                  </td>
+                                  <td className="px-4 py-3 text-right">
+                                    <span className="rounded-full bg-app-soft px-2 py-0.5 text-xs font-semibold text-app-dark/60">{entry.evaluations_count}</span>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </article>
+
+                    {/* Notes perso */}
+                    {stageaireData.notes.length > 0 && (
+                      <article className="rounded-2xl border border-app-muted bg-white shadow-sm overflow-hidden">
+                        <div className="px-6 py-4 border-b border-app-muted/60 flex items-center gap-3">
+                          <svg className="h-4 w-4 text-emerald-600" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" /></svg>
+                          <div>
+                            <h3 className="font-bold text-app-dark">Vos notes détaillées</h3>
+                            <p className="text-xs text-app-dark/40">Moyenne : <span className="font-bold" style={{ color: (stageaireData.notes.reduce((s, n) => s + parseFloat(n.note), 0) / stageaireData.notes.length) >= 10 ? "#16a34a" : "#dc2626" }}>{(stageaireData.notes.reduce((s, n) => s + parseFloat(n.note), 0) / stageaireData.notes.length).toFixed(2)}/20</span></p>
+                          </div>
+                        </div>
+                        <div className="p-5 space-y-2">
+                          {stageaireData.notes.map((note, index) => {
+                            const val = parseFloat(note.note);
+                            return (
+                              <div key={`note-cls-${index}`} className="flex items-center gap-3 rounded-xl border border-app-muted/60 bg-app-soft/40 px-4 py-3">
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-app-dark truncate">{note.controle}</p>
+                                  {note.published_at && <p className="text-xs text-app-dark/40">{new Date(note.published_at).toLocaleDateString("fr-FR")}</p>}
+                                </div>
+                                <div className="shrink-0 flex flex-col items-end gap-1">
+                                  <span className="rounded-full px-3 py-1 text-sm font-black text-white" style={{ background: val >= 10 ? "#22c55e" : "#ef4444" }}>{note.note}/20</span>
+                                  <div className="h-1.5 w-16 rounded-full bg-app-muted overflow-hidden">
+                                    <div className="h-full rounded-full" style={{ width: `${(val / 20) * 100}%`, background: val >= 10 ? "#22c55e" : "#ef4444" }} />
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </article>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
           </div>
         </section>
       ) : null}
 
-        {user.role === "Superviseur" && superviseurData ? (
-          <section className="mt-6 grid gap-5">
-            <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
-              <h3 className="text-lg font-semibold">Monitoring formation</h3>
-              <p className="mt-2 text-sm">Classes: {superviseurData.monitoring.classes_count}</p>
-              <p className="text-sm">Brigades: {superviseurData.monitoring.brigades_count}</p>
-              <p className="text-sm">Controles: {superviseurData.monitoring.controles_count}</p>
-              <p className="text-sm">Notes publiees: {superviseurData.monitoring.published_notes_count}</p>
-              <p className="text-sm">Notifications non lues: {superviseurData.notifications.unread_count}</p>
-            </article>
-            <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
-              <h3 className="text-lg font-semibold">Controles et notes par classe/brigade</h3>
-              <div className="mt-3 overflow-x-auto">
-                <table className="min-w-full text-sm">
-                  <thead>
-                  <tr className="border-b border-app-muted text-left">
-                    <th className="py-2">Classe</th>
-                    <th className="py-2">Brigade</th>
-                    <th className="py-2">Controles</th>
-                    <th className="py-2">Notes publiees</th>
-                    <th className="py-2">Moyenne</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {superviseurData.classes.map((c) => (
-                    <tr className="border-b border-app-muted/40" key={`${c.classe_code}-${c.brigade_code}`}>
-                      <td className="py-2">{c.classe_code}</td>
-                      <td className="py-2">{c.brigade_code}</td>
-                      <td className="py-2">{c.controles_count}</td>
-                      <td className="py-2">{c.notes_published_count}</td>
-                      <td className="py-2">{c.note_moyenne ?? "-"}</td>
-                    </tr>
-                  ))}
-                  {superviseurData.classes.length === 0 ? (
-                    <tr>
-                      <td className="py-2 text-sm text-app-dark/70" colSpan={5}>Aucune classe a afficher.</td>
-                    </tr>
-                  ) : null}
+        {user.role === "Superviseur" && superviseurData ? (() => {
+          const getPerf = (m: number | null) =>
+            m === null ? "na" : m >= 14 ? "excellent" : m >= 10 ? "passable" : "insuffisant";
+          const perfColors: Record<string, string> = {
+            excellent: "bg-emerald-100 text-emerald-700",
+            passable: "bg-amber-100 text-amber-700",
+            insuffisant: "bg-red-100 text-red-700",
+            na: "bg-gray-100 text-gray-500",
+          };
+          const perfLabels: Record<string, string> = {
+            excellent: "Excellent",
+            passable: "Passable",
+            insuffisant: "Insuffisant",
+            na: "N/A",
+          };
+          const filteredClasses = superviseurData.classes.filter((c) => {
+            const matchSearch =
+              !superviseurSearch ||
+              c.classe_code.toLowerCase().includes(superviseurSearch.toLowerCase()) ||
+              c.brigade_code.toLowerCase().includes(superviseurSearch.toLowerCase());
+            const matchPerf =
+              superviseurPerfFilter === "all" || getPerf(c.note_moyenne) === superviseurPerfFilter;
+            return matchSearch && matchPerf;
+          });
+          const chartClasses = superviseurData.classes
+            .filter((c) => c.note_moyenne !== null)
+            .slice(0, 10);
+          const barH = 120;
+
+          return (
+            <section className="mt-6 grid gap-5">
+              {/* Quick Stats */}
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+                {(
+                  [
+                    { label: "Classes", value: superviseurData.monitoring.classes_count, bg: "bg-indigo-50", text: "text-indigo-700", icon: "🏫" },
+                    { label: "Brigades", value: superviseurData.monitoring.brigades_count, bg: "bg-purple-50", text: "text-purple-700", icon: "🏳" },
+                    { label: "Stagiaires", value: superviseurData.monitoring.stagiaires_count, bg: "bg-sky-50", text: "text-sky-700", icon: "👤" },
+                    { label: "Contrôles", value: superviseurData.monitoring.controles_count, bg: "bg-amber-50", text: "text-amber-700", icon: "📋" },
+                    { label: "Notes publiées", value: superviseurData.monitoring.published_notes_count, bg: "bg-emerald-50", text: "text-emerald-700", icon: "✅" },
+                  ] as const
+                ).map((stat) => (
+                  <article key={stat.label} className={`rounded-2xl border border-app-muted/40 p-4 shadow-sm ${stat.bg} ${stat.text}`}>
+                    <div className="flex items-center justify-between">
+                      <span className="text-2xl">{stat.icon}</span>
+                      {stat.label === "Notes publiées" && superviseurData.notifications.unread_count > 0 ? (
+                        <span className="rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-bold text-white">
+                          {superviseurData.notifications.unread_count} non lues
+                        </span>
+                      ) : null}
+                    </div>
+                    <p className="mt-2 text-3xl font-bold">{stat.value}</p>
+                    <p className="text-xs font-medium opacity-70">{stat.label}</p>
+                  </article>
+                ))}
+              </div>
+
+              {/* Data Visualization + Recent Activities */}
+              <div className="grid gap-5 lg:grid-cols-2">
+                {/* Bar Chart */}
+                <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
+                  <h3 className="text-base font-semibold text-app-dark">Moyennes par classe</h3>
+                  {chartClasses.length === 0 ? (
+                    <p className="mt-4 text-sm text-app-dark/50">Aucune donnée de moyenne disponible.</p>
+                  ) : (
+                    <div className="mt-4 overflow-x-auto">
+                      <svg
+                        width={Math.max(chartClasses.length * 46, 200)}
+                        height={barH + 54}
+                        aria-label="Graphique moyennes par classe"
+                      >
+                        {[0, 5, 10, 15, 20].map((v) => {
+                          const y = barH - (v / 20) * barH;
+                          return (
+                            <g key={v}>
+                              <line x1={0} y1={y} x2={chartClasses.length * 46} y2={y} stroke="#f0e0f0" strokeWidth={1} />
+                              <text x={2} y={y - 2} fontSize={8} fill="#bbb">{v}</text>
+                            </g>
+                          );
+                        })}
+                        {chartClasses.map((c, i) => {
+                          const val = c.note_moyenne ?? 0;
+                          const h = (val / 20) * barH;
+                          const x = i * 46 + 8;
+                          const y = barH - h;
+                          const color =
+                            getPerf(c.note_moyenne) === "excellent"
+                              ? "#10b981"
+                              : getPerf(c.note_moyenne) === "passable"
+                              ? "#f59e0b"
+                              : "#ef4444";
+                          return (
+                            <g key={`${c.classe_code}-${c.brigade_code}`}>
+                              <rect x={x} y={y} width={30} height={h} rx={4} fill={color} fillOpacity={0.8} />
+                              <text x={x + 15} y={y - 3} fontSize={8} textAnchor="middle" fill="#555">{val}</text>
+                              <text x={x + 15} y={barH + 14} fontSize={8} textAnchor="middle" fill="#777">{c.classe_code}</text>
+                              <text x={x + 15} y={barH + 26} fontSize={7} textAnchor="middle" fill="#aaa">{c.brigade_code}</text>
+                            </g>
+                          );
+                        })}
+                        <line x1={0} y1={barH} x2={chartClasses.length * 46} y2={barH} stroke="#ddd" strokeWidth={1} />
+                      </svg>
+                      <div className="mt-3 flex flex-wrap gap-3 text-xs">
+                        <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-emerald-500 inline-block" />Excellent (&ge;14)</span>
+                        <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-amber-400 inline-block" />Passable (10–13)</span>
+                        <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-red-400 inline-block" />Insuffisant (&lt;10)</span>
+                      </div>
+                    </div>
+                  )}
+                </article>
+
+                {/* Recent Activities */}
+                <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
+                  <h3 className="text-base font-semibold text-app-dark">Activités récentes</h3>
+                  {superviseurData.recent_activities.length === 0 ? (
+                    <p className="mt-4 text-sm text-app-dark/50">Aucune activité récente.</p>
+                  ) : (
+                    <ul className="mt-3 grid gap-2">
+                      {superviseurData.recent_activities.map((a, i) => (
+                        <li key={i} className="flex items-start gap-3 rounded-lg bg-app-soft/30 px-3 py-2">
+                          <span className="mt-0.5 text-base shrink-0">{a.type === "controle" ? "📋" : "📝"}</span>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-medium text-app-dark">{a.label}</p>
+                            {a.date ? (
+                              <p className="text-xs text-app-dark/50">
+                                {new Date(a.date).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" })}
+                              </p>
+                            ) : null}
+                          </div>
+                          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                            a.status === "PUBLIE" ? "bg-emerald-100 text-emerald-700" :
+                            a.status === "CLOTURE" ? "bg-gray-100 text-gray-600" :
+                            a.status === "CORRIGE" ? "bg-sky-100 text-sky-700" :
+                            "bg-amber-100 text-amber-700"
+                          }`}>{a.status}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </article>
+              </div>
+
+              {/* Classes Table with Search & Filter */}
+              <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <h3 className="text-base font-semibold text-app-dark">Contrôles et notes par classe/brigade</h3>
+                  <div className="flex flex-wrap gap-2">
+                    <input
+                      type="text"
+                      placeholder="Rechercher classe ou brigade…"
+                      className="rounded-lg border border-app-muted px-3 py-1.5 text-sm outline-none focus:border-app-accent"
+                      value={superviseurSearch}
+                      onChange={(e) => setSuperviseurSearch(e.target.value)}
+                    />
+                    <select
+                      className="rounded-lg border border-app-muted px-3 py-1.5 text-sm outline-none focus:border-app-accent"
+                      value={superviseurPerfFilter}
+                      onChange={(e) => setSuperviseurPerfFilter(e.target.value)}
+                    >
+                      <option value="all">Toutes les performances</option>
+                      <option value="excellent">Excellent (≥14)</option>
+                      <option value="passable">Passable (10–13)</option>
+                      <option value="insuffisant">Insuffisant (&lt;10)</option>
+                      <option value="na">Sans note</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="mt-4 overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-app-muted text-left text-xs font-semibold uppercase tracking-wide text-app-dark/50">
+                        <th className="pb-2 pr-4">Classe</th>
+                        <th className="pb-2 pr-4">Brigade</th>
+                        <th className="pb-2 pr-4">Stagiaires</th>
+                        <th className="pb-2 pr-4">Contrôles</th>
+                        <th className="pb-2 pr-4">Notes publiées</th>
+                        <th className="pb-2 pr-4">Moyenne</th>
+                        <th className="pb-2">Statut</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredClasses.map((c) => {
+                        const perf = getPerf(c.note_moyenne);
+                        return (
+                          <tr
+                            className="border-b border-app-muted/30 transition hover:bg-app-soft/20"
+                            key={`${c.classe_code}-${c.brigade_code}`}
+                          >
+                            <td className="py-2.5 pr-4 font-medium">{c.classe_code}</td>
+                            <td className="py-2.5 pr-4">{c.brigade_code}</td>
+                            <td className="py-2.5 pr-4">{c.stagiaires_count}</td>
+                            <td className="py-2.5 pr-4">{c.controles_count}</td>
+                            <td className="py-2.5 pr-4">{c.notes_published_count}</td>
+                            <td className="py-2.5 pr-4 font-semibold">{c.note_moyenne ?? "–"}</td>
+                            <td className="py-2.5">
+                              <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${perfColors[perf]}`}>
+                                {perfLabels[perf]}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {filteredClasses.length === 0 ? (
+                        <tr>
+                          <td className="py-4 text-center text-sm text-app-dark/50" colSpan={7}>
+                            Aucune classe ne correspond aux critères.
+                          </td>
+                        </tr>
+                      ) : null}
                     </tbody>
                   </table>
                 </div>
+                {filteredClasses.length > 0 ? (
+                  <p className="mt-2 text-xs text-app-dark/40">{filteredClasses.length} classe(s) affichée(s)</p>
+                ) : null}
               </article>
+
               <ReferenceManagementSection
                 referencesData={referencesData}
                 referenceTab={referenceTab}
@@ -3227,50 +3715,253 @@ function DashboardPage({
                 handleRenameRank={handleRenameRank}
                 handleRenameSpeciality={handleRenameSpeciality}
               />
-          </section>
-        ) : null}
+            </section>
+          );
+        })() : null}
 
       {user.role === "Coordinateur" && coordinateurData ? (
-        <section className="mt-6 grid gap-5">
-          <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
-            <h3 className="text-lg font-semibold">Monitoring global (niveau coordinateur)</h3>
-            <p className="mt-2 text-sm">Controles total: {coordinateurData.monitoring.controls_total}</p>
-            <p className="text-sm">Controles publies: {coordinateurData.monitoring.controls_published}</p>
-            <p className="text-sm">Notes publiees: {coordinateurData.monitoring.notes_published}</p>
-            <p className="text-sm">Notifications non lues: {coordinateurData.notifications.unread_count}</p>
-          </article>
-          <article className="card-hover rounded-2xl border border-app-muted bg-white p-6 shadow-sm">
-            <h3 className="text-lg font-semibold">Vue par brigade</h3>
-            <div className="mt-3 overflow-x-auto">
-              <table className="min-w-full text-sm">
-                <thead>
-                  <tr className="border-b border-app-muted text-left">
-                    <th className="py-2">Brigade</th>
-                    <th className="py-2">Classes</th>
-                    <th className="py-2">Stagiaires</th>
-                    <th className="py-2">Notes publiees</th>
-                    <th className="py-2">Moyenne</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {coordinateurData.monitoring.brigades.map((b) => (
-                    <tr className="border-b border-app-muted/40" key={b.brigade_code}>
-                      <td className="py-2">{b.brigade_code}</td>
-                      <td className="py-2">{b.classes_count}</td>
-                      <td className="py-2">{b.stagiaires_count}</td>
-                      <td className="py-2">{b.published_notes_count}</td>
-                      <td className="py-2">{b.note_moyenne ?? "-"}</td>
-                    </tr>
-                  ))}
-                  {coordinateurData.monitoring.brigades.length === 0 ? (
-                    <tr>
-                      <td className="py-2 text-sm text-app-dark/70" colSpan={5}>Aucune brigade a afficher.</td>
-                    </tr>
-                  ) : null}
-                </tbody>
-              </table>
+        <section className="mt-6 grid gap-5 md:grid-cols-[220px_1fr]">
+          {/* Sidebar */}
+          <aside className="sidebar-animated card-hover rounded-2xl border border-app-muted bg-white p-4 shadow-sm self-start">
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-app-accent">Espace Coordinateur</p>
+            <div className="mt-3 grid gap-1">
+              {([
+                { key: "dashboard", label: "Tableau de bord", icon: <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /> },
+                { key: "reporting", label: "Reporting", icon: <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /> },
+                { key: "export", label: "Export données", icon: <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /> },
+              ] as const).map(({ key, label, icon }) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setCoordinateurView(key)}
+                  className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition ${coordinateurView === key ? "bg-app-dark text-white" : "text-app-dark hover:bg-app-soft"}`}
+                >
+                  <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth={coordinateurView === key ? 2.5 : 2} viewBox="0 0 24 24">{icon}</svg>
+                  {label}
+                </button>
+              ))}
             </div>
-          </article>
+            {coordinateurData.notifications.unread_count > 0 && (
+              <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
+                <p className="text-xs font-semibold text-amber-700">{coordinateurData.notifications.unread_count} notification{coordinateurData.notifications.unread_count > 1 ? "s" : ""} non lue{coordinateurData.notifications.unread_count > 1 ? "s" : ""}</p>
+              </div>
+            )}
+          </aside>
+
+          {/* Main content */}
+          <div className="min-w-0 grid gap-5">
+
+            {/* ── DASHBOARD ── */}
+            {coordinateurView === "dashboard" && (
+              <>
+                {/* KPI cards */}
+                <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                  {[
+                    { label: "Brigades", value: coordinateurData.monitoring.brigades.length, color: "#15173D", bg: "rgba(21,23,61,0.07)" },
+                    { label: "Stagiaires", value: coordinateurData.monitoring.stagiaires_total, color: "#15173D", bg: "rgba(21,23,61,0.07)" },
+                    { label: "Contrôles publiés", value: coordinateurData.monitoring.controls_published, color: "#982598", bg: "rgba(152,37,152,0.07)" },
+                    { label: "Notes publiées", value: coordinateurData.monitoring.notes_published, color: "#059669", bg: "rgba(5,150,105,0.07)" },
+                  ].map((s) => (
+                    <article key={s.label} className="rounded-2xl border border-app-muted bg-white p-4 shadow-sm">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-xl mb-2" style={{ background: s.bg }}>
+                        <span className="text-lg font-black" style={{ color: s.color }}>{s.value}</span>
+                      </div>
+                      <p className="text-xs font-semibold text-app-dark/50 uppercase tracking-wide">{s.label}</p>
+                    </article>
+                  ))}
+                </div>
+
+                {/* Brigade table */}
+                <article className="rounded-2xl border border-app-muted bg-white shadow-sm overflow-hidden">
+                  <div className="px-6 py-4 border-b border-app-muted/60" style={{ background: "#15173D" }}>
+                    <h3 className="font-bold text-white">Vue par brigade</h3>
+                    <p className="mt-0.5 text-xs text-white/50">Détail par brigade sous votre responsabilité.</p>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-app-muted/60 bg-app-soft/40">
+                          {["Brigade", "Classes", "Stagiaires", "Notes publiées", "Moyenne /20", "Taux réussite", "Soumissions"].map((h) => (
+                            <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-app-dark/50">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {coordinateurData.monitoring.brigades.map((b) => (
+                          <tr className="border-b border-app-muted/40 hover:bg-app-soft/30 transition" key={b.brigade_code}>
+                            <td className="px-4 py-3 font-semibold text-app-dark">{b.brigade_code}</td>
+                            <td className="px-4 py-3 text-app-dark/70">{b.classes_count}</td>
+                            <td className="px-4 py-3 text-app-dark/70">{b.stagiaires_count}</td>
+                            <td className="px-4 py-3 text-app-dark/70">{b.published_notes_count}</td>
+                            <td className="px-4 py-3">
+                              {b.note_moyenne !== null ? (
+                                <span className="font-bold" style={{ color: b.note_moyenne >= 10 ? "#059669" : "#ef4444" }}>{b.note_moyenne}/20</span>
+                              ) : <span className="text-app-dark/30">—</span>}
+                            </td>
+                            <td className="px-4 py-3">
+                              {b.taux_reussite !== null ? (
+                                <span className="font-bold" style={{ color: b.taux_reussite >= 50 ? "#059669" : "#f59e0b" }}>{b.taux_reussite}%</span>
+                              ) : <span className="text-app-dark/30">—</span>}
+                            </td>
+                            <td className="px-4 py-3 text-app-dark/70">{b.soumissions_count}</td>
+                          </tr>
+                        ))}
+                        {coordinateurData.monitoring.brigades.length === 0 && (
+                          <tr><td colSpan={7} className="px-4 py-8 text-center text-sm text-app-dark/40 italic">Aucune brigade à afficher.</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </article>
+              </>
+            )}
+
+            {/* ── REPORTING ── */}
+            {coordinateurView === "reporting" && (
+              <>
+                {/* Global KPI */}
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                  <article className="rounded-2xl border border-app-muted bg-white p-5 shadow-sm">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-app-dark/40">Taux de réussite global</p>
+                    <div className="mt-3 flex items-end gap-2">
+                      <span className="text-4xl font-black" style={{ color: (coordinateurData.monitoring.taux_reussite_global ?? 0) >= 50 ? "#059669" : "#f59e0b" }}>
+                        {coordinateurData.monitoring.taux_reussite_global !== null ? `${coordinateurData.monitoring.taux_reussite_global}%` : "—"}
+                      </span>
+                      <span className="mb-1 text-xs text-app-dark/40">stagiaires ≥ 10/20</span>
+                    </div>
+                    <div className="mt-3 h-2 w-full rounded-full bg-app-muted/40 overflow-hidden">
+                      <div className="h-full rounded-full transition-all" style={{ width: `${coordinateurData.monitoring.taux_reussite_global ?? 0}%`, background: (coordinateurData.monitoring.taux_reussite_global ?? 0) >= 50 ? "#059669" : "#f59e0b" }} />
+                    </div>
+                  </article>
+                  <article className="rounded-2xl border border-app-muted bg-white p-5 shadow-sm">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-app-dark/40">Avancement moyen</p>
+                    <div className="mt-3 flex items-end gap-2">
+                      <span className="text-4xl font-black" style={{ color: (coordinateurData.monitoring.avancement_moyen ?? 0) >= 10 ? "#059669" : "#ef4444" }}>
+                        {coordinateurData.monitoring.avancement_moyen !== null ? `${coordinateurData.monitoring.avancement_moyen}` : "—"}
+                      </span>
+                      <span className="mb-1 text-xs text-app-dark/40">/ 20</span>
+                    </div>
+                    <div className="mt-3 h-2 w-full rounded-full bg-app-muted/40 overflow-hidden">
+                      <div className="h-full rounded-full transition-all" style={{ width: `${((coordinateurData.monitoring.avancement_moyen ?? 0) / 20) * 100}%`, background: (coordinateurData.monitoring.avancement_moyen ?? 0) >= 10 ? "#059669" : "#ef4444" }} />
+                    </div>
+                  </article>
+                  <article className="rounded-2xl border border-app-muted bg-white p-5 shadow-sm">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-app-dark/40">Stagiaires évalués</p>
+                    <div className="mt-3 flex items-end gap-2">
+                      <span className="text-4xl font-black text-app-dark">
+                        {coordinateurData.monitoring.brigades.reduce((s, b) => s + b.avec_notes_count, 0)}
+                      </span>
+                      <span className="mb-1 text-xs text-app-dark/40">/ {coordinateurData.monitoring.stagiaires_total}</span>
+                    </div>
+                    <div className="mt-3 h-2 w-full rounded-full bg-app-muted/40 overflow-hidden">
+                      <div className="h-full rounded-full bg-app-accent transition-all" style={{ width: coordinateurData.monitoring.stagiaires_total > 0 ? `${(coordinateurData.monitoring.brigades.reduce((s, b) => s + b.avec_notes_count, 0) / coordinateurData.monitoring.stagiaires_total) * 100}%` : "0%" }} />
+                    </div>
+                  </article>
+                </div>
+
+                {/* Taux de réussite per brigade */}
+                <article className="rounded-2xl border border-app-muted bg-white shadow-sm overflow-hidden">
+                  <div className="px-6 py-4 border-b border-app-muted/60">
+                    <h3 className="font-bold text-app-dark">Taux de réussite par brigade</h3>
+                    <p className="mt-0.5 text-xs text-app-dark/50">% de stagiaires avec une moyenne ≥ 10/20</p>
+                  </div>
+                  <div className="p-5 space-y-4">
+                    {coordinateurData.monitoring.brigades.length === 0 ? (
+                      <p className="text-sm text-app-dark/40 italic text-center py-6">Aucune brigade disponible.</p>
+                    ) : coordinateurData.monitoring.brigades.map((b) => {
+                      const taux = b.taux_reussite ?? 0;
+                      const color = taux >= 70 ? "#059669" : taux >= 50 ? "#f59e0b" : "#ef4444";
+                      return (
+                        <div key={b.brigade_code}>
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-sm font-semibold text-app-dark">{b.brigade_code}</span>
+                            <span className="text-sm font-bold" style={{ color }}>{b.taux_reussite !== null ? `${b.taux_reussite}%` : "—"}</span>
+                          </div>
+                          <div className="h-3 w-full rounded-full bg-app-muted/40 overflow-hidden">
+                            <div className="h-full rounded-full transition-all duration-500" style={{ width: `${taux}%`, background: color }} />
+                          </div>
+                          <p className="mt-0.5 text-xs text-app-dark/40">{b.avec_notes_count} évalués sur {b.stagiaires_count} stagiaires</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </article>
+
+                {/* Avancement moyen per brigade */}
+                <article className="rounded-2xl border border-app-muted bg-white shadow-sm overflow-hidden">
+                  <div className="px-6 py-4 border-b border-app-muted/60">
+                    <h3 className="font-bold text-app-dark">Note moyenne par brigade</h3>
+                    <p className="mt-0.5 text-xs text-app-dark/50">Moyenne des notes publiées (/20)</p>
+                  </div>
+                  <div className="p-5 space-y-4">
+                    {coordinateurData.monitoring.brigades.length === 0 ? (
+                      <p className="text-sm text-app-dark/40 italic text-center py-6">Aucune brigade disponible.</p>
+                    ) : coordinateurData.monitoring.brigades.map((b) => {
+                      const avg = b.note_moyenne ?? 0;
+                      const pct = (avg / 20) * 100;
+                      const color = avg >= 14 ? "#059669" : avg >= 10 ? "#f59e0b" : avg > 0 ? "#ef4444" : "#9ca3af";
+                      return (
+                        <div key={b.brigade_code}>
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-sm font-semibold text-app-dark">{b.brigade_code}</span>
+                            <span className="text-sm font-bold" style={{ color }}>{b.note_moyenne !== null ? `${b.note_moyenne}/20` : "—"}</span>
+                          </div>
+                          <div className="h-3 w-full rounded-full bg-app-muted/40 overflow-hidden">
+                            <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, background: color }} />
+                          </div>
+                          <p className="mt-0.5 text-xs text-app-dark/40">{b.published_notes_count} note{b.published_notes_count !== 1 ? "s" : ""} publiée{b.published_notes_count !== 1 ? "s" : ""}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </article>
+              </>
+            )}
+
+            {/* ── EXPORT ── */}
+            {coordinateurView === "export" && (
+              <article className="rounded-2xl border border-app-muted bg-white shadow-sm overflow-hidden">
+                <div className="px-6 py-4 border-b border-app-muted/60" style={{ background: "#15173D" }}>
+                  <h3 className="font-bold text-white">Export de données</h3>
+                  <p className="mt-0.5 text-xs text-white/50">Générer un rapport complet au format CSV ou Excel.</p>
+                </div>
+                <div className="p-6 space-y-6">
+                  <div className="rounded-xl border border-app-muted/60 bg-app-soft/40 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-app-dark/40 mb-2">Contenu du rapport</p>
+                    <ul className="space-y-1 text-sm text-app-dark/70">
+                      {["Brigade, classes, stagiaires par brigade", "Nombre de notes publiées et stagiaires évalués", "Note moyenne sur 20 par brigade", "Taux de réussite (≥ 10/20) par brigade", "Nombre total de soumissions par brigade"].map((item) => (
+                        <li key={item} className="flex items-center gap-2">
+                          <svg className="h-3.5 w-3.5 shrink-0 text-emerald-500" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                          {item}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <button
+                      type="button"
+                      onClick={() => void handleExportCSV()}
+                      className="flex items-center justify-center gap-3 rounded-xl border-2 border-app-dark bg-white px-5 py-4 text-sm font-semibold text-app-dark transition hover:bg-app-dark hover:text-white"
+                    >
+                      <svg className="h-5 w-5 shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                      <span>Exporter CSV</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleExportXLSX()}
+                      className="flex items-center justify-center gap-3 rounded-xl border-2 border-emerald-600 bg-white px-5 py-4 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-600 hover:text-white"
+                    >
+                      <svg className="h-5 w-5 shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                      <span>Exporter Excel (.xlsx)</span>
+                    </button>
+                  </div>
+
+                  <p className="text-xs text-app-dark/35 text-center">Le rapport inclut les données de toutes les brigades au moment du téléchargement.</p>
+                </div>
+              </article>
+            )}
+          </div>
         </section>
       ) : null}
 
@@ -3348,6 +4039,9 @@ function DashboardPage({
               </AdminNavButton>
               <AdminNavButton active={adminView === "events"} onClick={() => { setAdminView("events"); setSelectedAdminUser(null); }}>
                 Events
+              </AdminNavButton>
+              <AdminNavButton active={adminView === "classement"} onClick={() => { setAdminView("classement"); setSelectedAdminUser(null); }}>
+                Classement
               </AdminNavButton>
             </div>
           </aside>
@@ -3821,10 +4515,10 @@ function DashboardPage({
                       </select>
                     </label>
                     <Input
-                      label={accountForm.role === "Instructeur" && accountForm.est_civil ? "Matricule (optionnel)" : "Matricule"}
+                      label={(accountForm.role === "Instructeur" && accountForm.est_civil) || accountForm.role === "Admin" ? "Matricule (optionnel)" : "Matricule"}
                       value={accountForm.matricule}
                       onChange={(value) => setAccountForm((prev) => ({ ...prev, matricule: value }))}
-                      required={!(accountForm.role === "Instructeur" && accountForm.est_civil)}
+                      required={!(accountForm.role === "Instructeur" && accountForm.est_civil) && accountForm.role !== "Admin"}
                     />
                     {accountForm.role === "Instructeur" ? (
                       <label className="flex items-center gap-2 text-sm font-medium text-app-dark">
@@ -3836,7 +4530,7 @@ function DashboardPage({
                         Instructeur civil
                       </label>
                     ) : null}
-                    {!(accountForm.role === "Instructeur" && accountForm.est_civil) ? (
+                    {!(accountForm.role === "Instructeur" && accountForm.est_civil) && accountForm.role !== "Admin" ? (
                       <>
                         <label className="grid gap-1 text-sm font-medium text-app-dark">
                           Corp
@@ -4201,6 +4895,93 @@ function DashboardPage({
                 handleRenameRank={handleRenameRank}
                 handleRenameSpeciality={handleRenameSpeciality}
               />
+            ) : null}
+
+            {adminView === "classement" ? (
+              <div className="grid gap-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-lg font-bold text-app-dark">Classement des stagiaires</h2>
+                    <p className="text-xs text-app-dark/40 mt-0.5">Classement par moyenne des notes publiées, par classe.</p>
+                  </div>
+                  <button type="button" onClick={() => void loadAdminClassement()} className="flex items-center gap-1.5 rounded-lg border border-app-muted bg-white px-3 py-1.5 text-xs font-semibold text-app-dark hover:bg-app-soft transition">
+                    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                    Actualiser
+                  </button>
+                </div>
+                {!adminClassementData ? (
+                  <div className="flex items-center justify-center py-16">
+                    <svg className="h-6 w-6 animate-spin text-app-accent" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" /></svg>
+                  </div>
+                ) : adminClassementData.classes.length === 0 ? (
+                  <div className="rounded-2xl border border-app-muted bg-white p-10 text-center">
+                    <p className="text-sm text-app-dark/40">Aucune classe avec des stagiaires actifs.</p>
+                  </div>
+                ) : adminClassementData.classes.map((cls) => (
+                  <div key={`admin-cls-${cls.classe_code}`} className="overflow-hidden rounded-2xl border border-app-muted bg-white shadow-sm">
+                    <div className="flex items-center justify-between px-6 py-4 border-b border-app-muted/60" style={{ background: "#15173D" }}>
+                      <div>
+                        <p className="font-bold text-white">{cls.classe_label || cls.classe_code}</p>
+                        <p className="text-xs text-white/50">{cls.total} stagiaire(s)</p>
+                      </div>
+                      {(() => {
+                        const noted = cls.leaderboard.filter(e => e.moyenne != null);
+                        const avg = noted.length > 0 ? noted.reduce((s, e) => s + (e.moyenne ?? 0), 0) / noted.length : null;
+                        return avg != null ? (
+                          <span className="rounded-full px-3 py-1 text-sm font-black text-white" style={{ background: avg >= 10 ? "rgba(34,197,94,0.25)" : "rgba(239,68,68,0.25)" }}>
+                            Moy. classe : {avg.toFixed(2)}/20
+                          </span>
+                        ) : <span className="text-xs text-white/40">Aucune note</span>;
+                      })()}
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-app-muted/60 text-left text-xs font-semibold uppercase tracking-wide text-app-dark/40">
+                            <th className="px-5 py-3 w-14">Rang</th>
+                            <th className="px-4 py-3">Stagiaire</th>
+                            <th className="px-4 py-3 text-right">Moyenne</th>
+                            <th className="px-4 py-3 text-right">Notes</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {cls.leaderboard.map((entry, idx) => {
+                            const medal = entry.rank === 1 ? "🥇" : entry.rank === 2 ? "🥈" : entry.rank === 3 ? "🥉" : null;
+                            return (
+                              <tr key={`admin-entry-${idx}`} className="border-b border-app-muted/40 last:border-0 hover:bg-app-soft/40 transition">
+                                <td className="px-5 py-3 text-center">
+                                  {medal ? <span className="text-lg">{medal}</span> : <span className="text-sm font-bold text-app-dark/60">{entry.rank ?? "—"}</span>}
+                                </td>
+                                <td className="px-4 py-3">
+                                  <div className="flex items-center gap-2">
+                                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white" style={{ background: "#15173D" }}>
+                                      {entry.username[0]?.toUpperCase()}
+                                    </div>
+                                    <span className="font-medium text-app-dark">{entry.username}</span>
+                                  </div>
+                                </td>
+                                <td className="px-4 py-3 text-right">
+                                  {entry.moyenne != null ? (
+                                    <div className="flex flex-col items-end gap-1">
+                                      <span className="font-black text-sm" style={{ color: entry.moyenne >= 10 ? "#16a34a" : "#dc2626" }}>{entry.moyenne}/20</span>
+                                      <div className="h-1.5 w-20 rounded-full bg-app-muted overflow-hidden">
+                                        <div className="h-full rounded-full" style={{ width: `${(entry.moyenne / 20) * 100}%`, background: entry.moyenne >= 10 ? "#22c55e" : "#ef4444" }} />
+                                      </div>
+                                    </div>
+                                  ) : <span className="text-xs italic text-app-dark/30">Non noté</span>}
+                                </td>
+                                <td className="px-4 py-3 text-right">
+                                  <span className="rounded-full bg-app-soft px-2 py-0.5 text-xs font-semibold text-app-dark/60">{entry.evaluations_count}</span>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ))}
+              </div>
             ) : null}
 
             {adminView === "events" ? (
@@ -4784,10 +5565,11 @@ function AppShell() {
   };
 
   const loadProfile = useMemo(
-    () => async () => {
-      if (!accessToken) return;
+    () => async (tokenOverride?: string) => {
+      const token = tokenOverride ?? accessToken;
+      if (!token) return;
       let response = await fetch(`${API_BASE_URL}/api/me/`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
+        headers: { Authorization: `Bearer ${token}` },
       });
 
       if (response.status === 401) {
@@ -4855,7 +5637,7 @@ function AppShell() {
     localStorage.setItem(REFRESH_TOKEN_KEY, tokens.refresh);
     setAccessToken(tokens.access);
     setRefreshToken(tokens.refresh);
-    await loadProfile();
+    await loadProfile(tokens.access);
   };
 
   const signup = async (payload: {
